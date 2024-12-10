@@ -35,7 +35,8 @@
     "remark-breaks": "^4.0.0",
     "remark-emoji": "^5.0.1",
     "remark-gfm": "^4.0.0",
-    "socket.io-client": "^4.7.2"
+    "socket.io-client": "^4.7.2",
+    "core-js-pure": "^3.35.0"
   },
   "author": "",
   "license": "ISC"
