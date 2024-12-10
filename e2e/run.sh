@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/opt/homebrew/bin/bash
 
 # 색상 코드 정의
 GREEN='\033[0;32m'
