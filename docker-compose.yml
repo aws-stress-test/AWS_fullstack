@@ -11,6 +11,8 @@ services:
       - .env
     networks:
       - app_network
+    depends_on:
+      - redis
 
   frontend:
     build:
@@ -25,6 +27,20 @@ services:
       - .env
     networks:
       - app_network
+
+  redis:
+    image: redis:latest
+    container_name: chat-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    networks:
+      - app_network
+
+volumes:
+  redis_data:
 
 networks:
   app_network:
