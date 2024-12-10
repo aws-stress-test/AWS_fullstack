@@ -1,0 +1,31 @@
+version: '3.8'
+services:
+  backend:
+    build:
+      context: ./backend
+      args:
+        NODE_ENV: ${NODE_ENV}
+    ports:
+      - "5000:5000"
+    env_file:
+      - .env
+    networks:
+      - app_network
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        NODE_ENV: ${NODE_ENV}
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+    env_file:
+      - .env
+    networks:
+      - app_network
+
+networks:
+  app_network:
+    driver: bridge

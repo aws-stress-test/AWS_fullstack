@@ -17,7 +17,7 @@ class RedisClient {
     }
 
     try {
-      console.log('Connecting to Redis...');
+      console.log(`Connecting to Redis at redis://${redisHost}:${redisPort}...`);
 
       this.client = Redis.createClient({
         url: `redis://${redisHost}:${redisPort}`,
