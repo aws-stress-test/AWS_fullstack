@@ -6,106 +6,133 @@ class OptimizedRedisAdapter {
     this.pubClient = pubClient;
     this.subClient = subClient;
     this.subscribedRooms = new Set();
-    this.adapter = null;
+    this.socketRooms = new Map();
   }
 
   createAdapter(io) {
     try {
-      // 기본 Redis Adapter 생성
-      this.adapter = createAdapter(this.pubClient, this.subClient);
+      const adapter = createAdapter(this.pubClient, this.subClient);
+      io.adapter(adapter);
 
-      // Adapter 이벤트 처리
-      this.adapter.on('error', (error) => {
-        logger.error('Redis Adapter 에러:', error);
+      const originalJoin = adapter.join;
+      const originalLeave = adapter.leave;
+
+      adapter.join = async (socketId, rooms) => {
+        await originalJoin.call(adapter, socketId, rooms);
+        
+        this.handleRoomJoin(socketId, rooms);
+      };
+
+      adapter.leave = async (socketId, rooms) => {
+        await originalLeave.call(adapter, socketId, rooms);
+        
+        this.handleRoomLeave(socketId, rooms);
+      };
+
+      io.on('connection', (socket) => {
+        logger.info(`Client connected: ${socket.id}`);
+        this.socketRooms.set(socket.id, new Set());
+
+        socket.on('disconnect', () => {
+          logger.info(`Client disconnected: ${socket.id}`);
+          this.handleDisconnect(socket.id);
+        });
       });
 
-      // 기존 Adapter의 메서드를 확장하여 최적화
-      const originalJoin = io.adapter.join;
-      const originalLeave = io.adapter.leave;
+      logger.info('Redis Adapter 생성 완료');
+      return adapter;
 
-      // Join 메서드 최적화
-      io.adapter.join = async (socket, room) => {
-        try {
-          // 기존 join 로직 실행
-          await originalJoin.call(io.adapter, socket, room);
-
-          // 해당 room의 첫 구독자인 경우에만 Redis subscribe
-          if (!this.subscribedRooms.has(room)) {
-            await this.subscribeToRoom(room);
-          }
-        } catch (error) {
-          logger.error(`Room ${room} join 실패:`, error);
-          throw error;
-        }
-      };
-
-      // Leave 메서드 최적화
-      io.adapter.leave = async (socket, room) => {
-        try {
-          // 기존 leave 로직 실행
-          await originalLeave.call(io.adapter, socket, room);
-
-          // room에 더 이상 접속자가 없는 경우 구독 해제
-          const sockets = await io.adapter.sockets(new Set([room]));
-          if (sockets.size === 0) {
-            await this.unsubscribeFromRoom(room);
-          }
-        } catch (error) {
-          logger.error(`Room ${room} leave 실패:`, error);
-          throw error;
-        }
-      };
-
-      return this.adapter;
     } catch (error) {
       logger.error('Redis Adapter 생성 실패:', error);
       throw error;
     }
   }
 
-  async subscribeToRoom(room) {
-    try {
-      await this.subClient.subscribe(room);
-      this.subscribedRooms.add(room);
-      logger.info(`Room ${room} 구독 완료`);
+  handleRoomJoin(socketId, rooms) {
+    const roomArray = Array.isArray(rooms) ? rooms : [rooms];
+    const socketRooms = this.socketRooms.get(socketId) || new Set();
 
-      // 구독 상태 체크 예약
-      setTimeout(() => this.checkSubscriptionState(room), 1000);
-    } catch (error) {
-      logger.error(`Room ${room} 구독 실패:`, error);
-      throw error;
-    }
-  }
-
-  async unsubscribeFromRoom(room) {
-    try {
-      await this.subClient.unsubscribe(room);
-      this.subscribedRooms.delete(room);
-      logger.info(`Room ${room} 구독 해제 완료`);
-    } catch (error) {
-      logger.error(`Room ${room} 구독 해제 실패:`, error);
-      throw error;
-    }
-  }
-
-  async checkSubscriptionState(room) {
-    try {
-      const sockets = await this.adapter.sockets(new Set([room]));
-      if (sockets.size === 0 && this.subscribedRooms.has(room)) {
-        await this.unsubscribeFromRoom(room);
-        logger.info(`Room ${room} 불필요한 구독 제거`);
+    roomArray.forEach(room => {
+      socketRooms.add(room);
+      if (!this.subscribedRooms.has(room)) {
+        this.subClient.subscribe(room)
+          .then(() => {
+            this.subscribedRooms.add(room);
+            logger.info(`Subscribed to room ${room}`);
+          })
+          .catch(err => {
+            logger.error(`Failed to subscribe to room ${room}:`, err);
+          })
+          .finally(() => this.checkRoomSubscription(room));
       }
-    } catch (error) {
-      logger.error(`Room ${room} 구독 상태 확인 실패:`, error);
+    });
+
+    this.socketRooms.set(socketId, socketRooms);
+  }
+
+  handleRoomLeave(socketId, rooms) {
+    const roomArray = Array.isArray(rooms) ? rooms : [rooms];
+    const socketRooms = this.socketRooms.get(socketId);
+
+    if (socketRooms) {
+      roomArray.forEach(room => {
+        socketRooms.delete(room);
+        this.checkRoomUnsubscription(room);
+      });
     }
   }
 
-  // 구독 상태 모니터링
-  getSubscriptionStatus() {
-    return {
-      subscribedRooms: Array.from(this.subscribedRooms),
-      totalSubscriptions: this.subscribedRooms.size
-    };
+  handleDisconnect(socketId) {
+    const rooms = this.socketRooms.get(socketId);
+    if (rooms) {
+      rooms.forEach(room => {
+        this.checkRoomUnsubscription(room);
+      });
+    }
+    this.socketRooms.delete(socketId);
+  }
+
+  checkRoomSubscription(room) {
+    if (!this.shouldSubscribe(room)) {
+      this.subClient.unsubscribe(room)
+        .then(() => {
+          this.subscribedRooms.delete(room);
+          logger.info(`Unsubscribed from room ${room} after check`);
+        })
+        .catch(err => {
+          logger.error(`Failed to unsubscribe from room ${room}:`, err);
+        });
+    }
+  }
+
+  checkRoomUnsubscription(room) {
+    let hasSubscribers = false;
+    for (const [, rooms] of this.socketRooms) {
+      if (rooms.has(room)) {
+        hasSubscribers = true;
+        break;
+      }
+    }
+
+    if (!hasSubscribers && this.subscribedRooms.has(room)) {
+      this.subClient.unsubscribe(room)
+        .then(() => {
+          this.subscribedRooms.delete(room);
+          logger.info(`Unsubscribed from room ${room}`);
+        })
+        .catch(err => {
+          logger.error(`Failed to unsubscribe from room ${room}:`, err);
+        });
+    }
+  }
+
+  shouldSubscribe(room) {
+    for (const [, rooms] of this.socketRooms) {
+      if (rooms.has(room)) {
+        return true;
+      }
+    }
+    return false;
   }
 }
 
