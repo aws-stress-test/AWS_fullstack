@@ -103,159 +103,36 @@ axiosInstance.interceptors.request.use(
 
 // 응답 인터셉터
 axiosInstance.interceptors.response.use(
-  (response) => {
-    // 성공한 요청 제거
-    const requestKey = `${response.config.method}:${response.config.url}`;
-    pendingRequests.delete(requestKey);
-    
-    return response;
-  },
+  (response) => response,
   async (error) => {
-    const config = error.config || {};
-    config.retryCount = config.retryCount || 0;
-    
-    // 요청이 취소된 경우
-    if (axios.isCancel(error)) {
-      console.log('Request canceled:', error.message);
-      return Promise.reject(error);
+    const originalRequest = error.config;
+    const status = error.response?.status;
+    const errorData = error.response?.data;
+    const errorMessage = errorData?.message || error.message;
+
+    // 403 에러는 throw하지 않고 그대로 반환
+    if (status === 403) {
+      return Promise.reject(error.response);
     }
 
-    // 재시도 가능한 에러이고 최대 재시도 횟수에 도달하지 않은 경우
-    if (isRetryableError(error) && config.retryCount < RETRY_CONFIG.maxRetries) {
-      config.retryCount++;
-      const delay = getRetryDelay(config.retryCount);
-      
-      console.log(
-        `Retrying request (${config.retryCount}/${RETRY_CONFIG.maxRetries}) ` +
-        `after ${Math.round(delay)}ms:`, 
-        config.url
-      );
-      
-      try {
-        // 딜레이 후 재시도
-        await new Promise(resolve => setTimeout(resolve, delay));
-        return await axiosInstance(config);
-      } catch (retryError) {
-        if (config.retryCount >= RETRY_CONFIG.maxRetries) {
-          console.error('Max retry attempts reached:', config.url);
-        }
-        return Promise.reject(retryError);
-      }
-    }
-
-    // 에러 유형별 처리
-    if (!error.response) {
-      // 네트워크 오류
-      const customError = new Error();
-      customError.message = [
-        '서버와 통신할 수 없습니다.',
-        '네트워크 연결을 확인하고 잠시 후 다시 시도해주세요.',
-        error.code ? `(Error: ${error.code})` : ''
-      ].filter(Boolean).join(' ');
-      
-      customError.isNetworkError = true;
-      customError.originalError = error;
-      customError.status = 0;
-      customError.code = error.code || 'NETWORK_ERROR';
-      customError.config = config;
-      
-      customError.retry = async () => {
-        try {
-          return await axiosInstance(config);
-        } catch (retryError) {
-          console.error('Manual retry failed:', retryError);
-          throw retryError;
-        }
-      };
-      
-      throw customError;
-    }
-
-    // HTTP 상태 코드별 처리
-    const status = error.response.status;
-    const errorData = error.response.data;
-    
-    let errorMessage;
-    let shouldLogout = false;
-    
-    switch (status) {
-      case 400:
-        errorMessage = errorData?.message || '잘못된 요청입니다.';
-        break;
-        
-      case 401:
-        errorMessage = '인증이 필요하거나 만료되었습니다.';
-        shouldLogout = true;
-        break;
-        
-      case 403:
-        errorMessage = errorData?.message || '접근 권한이 없습니다.';
-        break;
-        
-      case 404:
-        errorMessage = errorData?.message || '요청한 리소스를 찾을 수 없습니다.';
-        break;
-        
-      case 408:
-        errorMessage = '요청 시간이 초과되었습니다.';
-        break;
-        
-      case 429:
-        errorMessage = '너무 많은 요청이 발생했습니다. 잠시 후 다시 시도해주세요.';
-        break;
-        
-      case 500:
-        errorMessage = '서버 오류가 발생했습니다. 잠시 후 다시 시도해주세요.';
-        break;
-        
-      case 502:
-      case 503:
-      case 504:
-        errorMessage = '서버가 일시적으로 응답할 수 없습니다. 잠시 후 다시 시도해주세요.';
-        break;
-        
-      default:
-        errorMessage = errorData?.message || '예기치 않은 오류가 발생했습니다.';
-    }
-
-    // 에러 객체 생성 및 메타데이터 추가
-    const enhancedError = new Error(errorMessage);
-    enhancedError.status = status;
-    enhancedError.code = errorData?.code;
-    enhancedError.data = errorData;
-    enhancedError.config = config;
-    enhancedError.originalError = error;
-    enhancedError.retry = async () => {
-      try {
-        return await axiosInstance(config);
-      } catch (retryError) {
-        console.error('Manual retry failed:', retryError);
-        throw retryError;
-      }
-    };
-
-    // 401 에러 처리
-    if (status === 401) {
+    // 401 에러 (토큰 만료)의 경우에만 토큰 갱신 처리
+    if (status === 401 && errorData?.code === 'TOKEN_EXPIRED' && !originalRequest._retry) {
+      originalRequest._retry = true;
       try {
         const refreshed = await authService.refreshToken();
         if (refreshed) {
-          // 토큰 갱신 성공 시 원래 요청 재시도
-          const user = authService.getCurrentUser();
-          if (user?.token) {
-            config.headers['x-auth-token'] = user.token;
-            return axiosInstance(config);
-          }
+          originalRequest.headers['Authorization'] = `Bearer ${authService.getToken()}`;
+          return axiosInstance(originalRequest);
         }
       } catch (refreshError) {
         console.error('Token refresh failed:', refreshError);
         authService.logout();
-        if (typeof window !== 'undefined') {
-          window.location.href = '/?error=session_expired';
-        }
+        window.location.href = '/?error=session_expired';
+        return Promise.reject(refreshError);
       }
     }
 
-    throw enhancedError;
+    return Promise.reject(error);
   }
 );
 

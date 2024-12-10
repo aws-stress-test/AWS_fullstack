@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useRouter } from 'next/router';
 import dynamic from 'next/dynamic';
-import { Card } from '@goorm-dev/vapor-core';
+import { Card, FormControl } from '@goorm-dev/vapor-core';
 import { 
   Button, 
   Status,
@@ -634,9 +634,27 @@ function ChatRoomsComponent() {
       }
     } catch (error) {
       console.error('Room join with password error:', error);
+      
+      // 비밀번호가 틀린 경우 (403 에러)
+      if (error.response?.status === 403) {
+        setPasswordModal(prev => ({
+          ...prev,
+          error: '채팅방 비밀번호가 올바르지 않습니다. 다시 입력해주세요.',
+          password: ''
+        }));
+        
+        const passwordInput = document.querySelector('input[type="password"]');
+        if (passwordInput) {
+          passwordInput.focus();
+        }
+        return;
+      }
+      
+      // 기타 에러
       setPasswordModal(prev => ({
         ...prev,
-        error: error.response?.data?.message || '비밀번호가 올바르지 않습니다.'
+        error: '채팅방 입장에 실패했습니다. 다시 시도해주세요.',
+        password: ''
       }));
     }
   };
@@ -801,29 +819,46 @@ function ChatRoomsComponent() {
       
       <Modal
         isOpen={passwordModal.isOpen}
-        onClose={() => setPasswordModal(prev => ({ ...prev, isOpen: false }))}
+        onClose={() => setPasswordModal(prev => ({ 
+          ...prev, 
+          isOpen: false,
+          error: null,
+          password: ''
+        }))}
       >
         <div className="modal-header">비밀번호 입력</div>
         <div className="modal-body">
           <div className="space-y-4">
             <Text>이 채팅방은 비밀번호가 필요합니다.</Text>
-            <Input
-              type="password"
-              placeholder="비밀번호를 입력하세요"
-              value={passwordModal.password}
-              onChange={(e) => setPasswordModal(prev => ({
-                ...prev,
-                password: e.target.value,
-                error: null
-              }))}
-              error={passwordModal.error}
-            />
+            <div className="space-y-2">
+              <Input
+                type="password"
+                placeholder="비밀번호를 입력하세요"
+                value={passwordModal.password}
+                onChange={(e) => setPasswordModal(prev => ({
+                  ...prev,
+                  password: e.target.value,
+                  error: null
+                }))}
+                className={passwordModal.error ? 'border-red-500' : ''}
+              />
+              {passwordModal.error && (
+                <Text size="sm" color="danger">
+                  {passwordModal.error}
+                </Text>
+              )}
+            </div>
           </div>
         </div>
         <div className="modal-footer">
           <Button
             variant="ghost"
-            onClick={() => setPasswordModal(prev => ({ ...prev, isOpen: false }))}
+            onClick={() => setPasswordModal(prev => ({ 
+              ...prev, 
+              isOpen: false,
+              error: null,
+              password: ''
+            }))}
           >
             취소
           </Button>
