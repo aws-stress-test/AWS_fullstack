@@ -7,7 +7,9 @@ import {
   Status,
   Spinner,
   Text,
-  Alert
+  Alert,
+  Modal,
+  Input
 } from '@goorm-dev/vapor-components';
 import {
   HScrollTable,
@@ -190,6 +192,13 @@ function ChatRoomsComponent() {
   const isLoadingRef = useRef(false);
   const previousRoomsRef = useRef([]);
   const lastLoadedPageRef = useRef(0);
+
+  const [passwordModal, setPasswordModal] = useState({
+    isOpen: false,
+    roomId: null,
+    password: '',
+    error: null
+  });
 
   const getRetryDelay = useCallback((retryCount) => {
     const delay = RETRY_CONFIG.baseDelay * 
@@ -561,7 +570,7 @@ function ChatRoomsComponent() {
     };
   }, [currentUser, handleAuthError]);
 
-  const handleJoinRoom = async (roomId) => {
+  const handleJoinRoom = async (roomId, hasPassword) => {
     if (connectionStatus !== CONNECTION_STATUS.CONNECTED) {
       setError({
         title: '채팅방 입장 실패',
@@ -571,6 +580,18 @@ function ChatRoomsComponent() {
       return;
     }
 
+    // 비밀번호가 필요한 방인 경우
+    if (hasPassword) {
+      setPasswordModal({
+        isOpen: true,
+        roomId,
+        password: '',
+        error: null
+      });
+      return;
+    }
+
+    // 비밀번호가 없는 방인 경우 바로 입장 시도
     try {
       const response = await axiosInstance.post(`/api/rooms/${roomId}/join`, {}, {
         timeout: 5000
@@ -585,6 +606,8 @@ function ChatRoomsComponent() {
       let errorMessage = '입장에 실패했습니다.';
       if (error.response?.status === 404) {
         errorMessage = '채팅방을 찾을 수 없습니다.';
+      } else if (error.response?.status === 401) {
+        errorMessage = '비밀번호가 일치하지 않습니다.';
       } else if (error.response?.status === 403) {
         errorMessage = '채팅방 입장 권한이 없습니다.';
       }
@@ -594,6 +617,27 @@ function ChatRoomsComponent() {
         message: error.response?.data?.message || errorMessage,
         type: 'danger'
       });
+    }
+  };
+
+  const handlePasswordSubmit = async () => {
+    try {
+      const response = await axiosInstance.post(`/api/rooms/${passwordModal.roomId}/join`, {
+        password: passwordModal.password
+      }, {
+        timeout: 5000
+      });
+      
+      if (response.data.success) {
+        setPasswordModal(prev => ({ ...prev, isOpen: false }));
+        router.push(`/chat?room=${passwordModal.roomId}`);
+      }
+    } catch (error) {
+      console.error('Room join with password error:', error);
+      setPasswordModal(prev => ({
+        ...prev,
+        error: error.response?.data?.message || '비밀번호가 올바르지 않습니다.'
+      }));
     }
   };
 
@@ -646,7 +690,7 @@ function ChatRoomsComponent() {
         <Button
           variant="primary"
           size="md"
-          onClick={() => handleJoinRoom(rowData._id)}
+          onClick={() => handleJoinRoom(rowData._id, rowData.hasPassword)}
           disabled={connectionStatus !== CONNECTION_STATUS.CONNECTED}
         >
           입장
@@ -754,6 +798,44 @@ function ChatRoomsComponent() {
           )}
         </Card.Body>
       </Card>
+      
+      <Modal
+        isOpen={passwordModal.isOpen}
+        onClose={() => setPasswordModal(prev => ({ ...prev, isOpen: false }))}
+      >
+        <div className="modal-header">비밀번호 입력</div>
+        <div className="modal-body">
+          <div className="space-y-4">
+            <Text>이 채팅방은 비밀번호가 필요합니다.</Text>
+            <Input
+              type="password"
+              placeholder="비밀번호를 입력하세요"
+              value={passwordModal.password}
+              onChange={(e) => setPasswordModal(prev => ({
+                ...prev,
+                password: e.target.value,
+                error: null
+              }))}
+              error={passwordModal.error}
+            />
+          </div>
+        </div>
+        <div className="modal-footer">
+          <Button
+            variant="ghost"
+            onClick={() => setPasswordModal(prev => ({ ...prev, isOpen: false }))}
+          >
+            취소
+          </Button>
+          <Button
+            variant="primary"
+            onClick={handlePasswordSubmit}
+            disabled={!passwordModal.password}
+          >
+            입장
+          </Button>
+        </div>
+      </Modal>
     </div>
   );
 }
