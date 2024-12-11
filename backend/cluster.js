@@ -1,6 +1,5 @@
 const cluster = require('cluster');
 const os = require('os');
-const v8 = require('v8');
 const { setupServer } = require('./server');
 
 cluster.schedulingPolicy = cluster.SCHED_RR; // Round-Robin 스케줄링
