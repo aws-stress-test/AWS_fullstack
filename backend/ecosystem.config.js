@@ -2,8 +2,8 @@ module.exports = {
   apps: [{
     name: 'backend',
     script: 'server.js',
-    instances: 2,
-    exec_mode: 'cluster',
+    instances: 1,
+    exec_mode: 'fork',
     watch: true,
     sticky_sessions: true,
 

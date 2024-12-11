@@ -3,8 +3,8 @@ module.exports = {
     name: "frontend",
     script: "npm",
     args: "start",
-    exec_mode: "cluster",
-    instances: 2,
+    exec_mode: "fork",
+    instances: 1,
     
     max_memory_restart: '1536M',
     node_args: '--max-old-space-size=1536',
