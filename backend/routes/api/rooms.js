@@ -3,6 +3,7 @@ const router = express.Router();
 const auth = require('../../middleware/auth');
 const Room = require('../../models/Room');
 const User = require('../../models/User');
+const redisManager = require('../../config/redis');
 const { rateLimit } = require('express-rate-limit');
 let io;
 
@@ -89,23 +90,31 @@ router.get('/', [limiter, auth], async (req, res) => {
       ? req.query.sortOrder
       : 'desc';
 
+    // 캐시 키 생성 및 확인
+    const cacheKey = `rooms:list:${page}:${pageSize}:${sortField}:${sortOrder}:${req.query.search || 'none'}`;
+    const cachedResult = await redisManager.getCache(cacheKey);
+    
+    if (cachedResult) {
+      return res.json(JSON.parse(cachedResult));
+    }
+
     // 검색 필터 구성
     const filter = {};
     if (req.query.search) {
       filter.name = { $regex: req.query.search, $options: 'i' };
     }
 
-    // 총 문서 수 조회
-    const totalCount = await Room.countDocuments(filter);
-
-    // 채팅방 목록 조회 with 페이지네이션
-    const rooms = await Room.find(filter)
-      .populate('creator', 'name email')
-      .populate('participants', 'name email')
-      .sort({ [sortField]: sortOrder === 'desc' ? -1 : 1 })
-      .skip(skip)
-      .limit(pageSize)
-      .lean();
+    // 총 문서 수 조회와 채팅방 목록 조회를 병렬로 실행
+    const [totalCount, rooms] = await Promise.all([
+      Room.countDocuments(filter),
+      Room.find(filter)
+        .populate('creator', 'name email')
+        .populate('participants', 'name email')
+        .sort({ [sortField]: sortOrder === 'desc' ? -1 : 1 })
+        .skip(skip)
+        .limit(pageSize)
+        .lean()
+    ]);
 
     // 안전한 응답 데이터 구성 
     const safeRooms = rooms.map(room => {
@@ -138,14 +147,7 @@ router.get('/', [limiter, auth], async (req, res) => {
     const totalPages = Math.ceil(totalCount / pageSize);
     const hasMore = skip + rooms.length < totalCount;
 
-    // 캐시 설정
-    res.set({
-      'Cache-Control': 'private, max-age=10',
-      'Last-Modified': new Date().toUTCString()
-    });
-
-    // 응답 전송
-    res.json({
+    const response = {
       success: true,
       data: safeRooms,
       metadata: {
@@ -160,24 +162,22 @@ router.get('/', [limiter, auth], async (req, res) => {
           order: sortOrder
         }
       }
-    });
+    };
+
+    // 결과 캐싱 (30초)
+    await redisManager.setCache(cacheKey, JSON.stringify(response), 30);
+
+    res.json(response);
 
   } catch (error) {
     console.error('방 목록 조회 에러:', error);
-    const errorResponse = {
+    res.status(500).json({
       success: false,
       error: {
         message: '채팅방 목록을 불러오는데 실패했습니다.',
         code: 'ROOMS_FETCH_ERROR'
       }
-    };
-
-    if (process.env.NODE_ENV === 'development') {
-      errorResponse.error.details = error.message;
-      errorResponse.error.stack = error.stack;
-    }
-
-    res.status(500).json(errorResponse);
+    });
   }
 });
 
@@ -205,7 +205,12 @@ router.post('/', auth, async (req, res) => {
       .populate('creator', 'name email')
       .populate('participants', 'name email');
     
-    // Socket.IO를 통해 새 채팅방 생성 알림
+    // 캐시 무효화
+    const cacheKeys = await redisManager.getKeys('rooms:list:*');
+    for (const key of cacheKeys) {
+      await redisManager.delCache(key);
+    }
+
     if (io) {
       io.to('room-list').emit('roomCreated', {
         ...populatedRoom.toObject(),
@@ -273,7 +278,6 @@ router.post('/:roomId/join', auth, async (req, res) => {
       });
     }
 
-    // 비밀번호 확인
     if (room.hasPassword) {
       const isPasswordValid = await room.checkPassword(password);
       if (!isPasswordValid) {
@@ -284,15 +288,19 @@ router.post('/:roomId/join', auth, async (req, res) => {
       }
     }
 
-    // 참여자 목록에 추가
     if (!room.participants.includes(req.user.id)) {
       room.participants.push(req.user.id);
       await room.save();
+      
+      // 캐시 무효화
+      const cacheKeys = await redisManager.getKeys('rooms:list:*');
+      for (const key of cacheKeys) {
+        await redisManager.delCache(key);
+      }
     }
 
     const populatedRoom = await room.populate('participants', 'name email');
 
-    // Socket.IO를 통해 참여자 업데이트 알림
     if (io) {
       io.to(req.params.roomId).emit('roomUpdate', {
         ...populatedRoom.toObject(),

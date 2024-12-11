@@ -7,6 +7,8 @@ const { jwtSecret } = require('../config/keys');
 const redisClient = require('../utils/redisClient');
 const SessionService = require('../services/sessionService');
 const aiService = require('../services/aiService');
+const messageQueue = require('../utils/queue');
+const redisManager = require('../config/redis');
 
 module.exports = function(io) {
   const connectedUsers = new Map();
@@ -20,6 +22,7 @@ module.exports = function(io) {
   const MESSAGE_LOAD_TIMEOUT = 10000; // 메시지 로드 타임아웃 (10초)
   const RETRY_DELAY = 2000; // 재시도 간격 (2초)
   const DUPLICATE_LOGIN_TIMEOUT = 10000; // 중복 로그인 타임아웃 (10초)
+  const CACHE_TTL = 300; // 5분
 
   // 로깅 유틸리티 함수
   const logDebug = (action, data) => {
@@ -28,6 +31,22 @@ module.exports = function(io) {
       timestamp: new Date().toISOString()
     });
   };
+
+  // 메시지 캐싱 함수 추가
+  async function getCachedMessages(roomId, before, limit) {
+    const cacheKey = `messages:${roomId}:${before || 'latest'}:${limit}`;
+    
+    try {
+      const cached = await redisManager.getCache(cacheKey);
+      if (cached) {
+        return JSON.parse(cached);
+      }
+      return null;
+    } catch (error) {
+      logDebug('cache get error', { error: error.message });
+      return null;
+    }
+  }
 
   // 메시지 일괄 로드 함수 개선
   const loadMessages = async (socket, roomId, before, limit = BATCH_SIZE) => {
@@ -38,6 +57,12 @@ module.exports = function(io) {
     });
 
     try {
+      // 쿼시 확인
+      const cached = await getCachedMessages(roomId, before, limit);
+      if (cached) {
+        return cached;
+      }
+
       // 쿼리 구성
       const query = { room: roomId };
       if (before) {
@@ -86,11 +111,20 @@ module.exports = function(io) {
         });
       }
 
-      return {
+      // 결과 캐싱
+      const result = {
         messages: sortedMessages,
         hasMore,
         oldestTimestamp: sortedMessages[0]?.timestamp || null
       };
+
+      await redisManager.setCache(
+        `messages:${roomId}:${before || 'latest'}:${limit}`,
+        JSON.stringify(result),
+        CACHE_TTL
+      );
+
+      return result;
     } catch (error) {
       if (error.message === 'Message loading timed out') {
         logDebug('message load timeout', {
@@ -438,15 +472,11 @@ module.exports = function(io) {
       }
     });
     
-    // 메시지 전송 처리
+    // 메시지 전송 처리 수정
     socket.on('chatMessage', async (messageData) => {
       try {
         if (!socket.user) {
           throw new Error('Unauthorized');
-        }
-
-        if (!messageData) {
-          throw new Error('메시지 데이터가 없습니다.');
         }
 
         const { room, type, content, fileData } = messageData;
@@ -475,92 +505,32 @@ module.exports = function(io) {
           throw new Error('세션이 만료되었습니다. 다시 로그인해주세요.');
         }
 
-        // AI 멘션 확인
-        const aiMentions = extractAIMentions(content);
-        let message;
-
-        logDebug('message received', {
-          type,
-          room,
+        // Bull 큐에 메시지 추가
+        const jobData = {
+          room: messageData.room,
+          type: messageData.type,
+          content: messageData.content?.trim(),
           userId: socket.user.id,
-          hasFileData: !!fileData,
-          hasAIMentions: aiMentions.length
+          fileData: messageData.fileData,
+          timestamp: Date.now()
+        };
+
+        const job = await messageQueue.add(jobData);
+
+        // 캐시 무효화
+        const cacheKeys = await redisManager.getKeys(`messages:${messageData.room}:*`);
+        await Promise.all(cacheKeys.map(key => redisManager.delCache(key)));
+
+        socket.emit('messagePending', {
+          success: true,
+          tempId: job.id,
+          timestamp: jobData.timestamp
         });
 
-        // 메시지 타입별 처리
-        switch (type) {
-          case 'file':
-            if (!fileData || !fileData._id) {
-              throw new Error('파일 데이터가 올바르지 않습니다.');
-            }
-
-            const file = await File.findOne({
-              _id: fileData._id,
-              user: socket.user.id
-            });
-
-            if (!file) {
-              throw new Error('파일을 찾을 수 없거나 접근 권한이 없습니다.');
-            }
-
-            message = new Message({
-              room,
-              sender: socket.user.id,
-              type: 'file',
-              file: file._id,
-              content: content || '',
-              timestamp: new Date(),
-              reactions: {},
-              metadata: {
-                fileType: file.mimetype,
-                fileSize: file.size,
-                originalName: file.originalname
-              }
-            });
-            break;
-
-          case 'text':
-            const messageContent = content?.trim() || messageData.msg?.trim();
-            if (!messageContent) {
-              return;
-            }
-
-            message = new Message({
-              room,
-              sender: socket.user.id,
-              content: messageContent,
-              type: 'text',
-              timestamp: new Date(),
-              reactions: {}
-            });
-            break;
-
-          default:
-            throw new Error('지원하지 않는 메시지 타입입니다.');
-        }
-
-        await message.save();
-        await message.populate([
-          { path: 'sender', select: 'name email profileImage' },
-          { path: 'file', select: 'filename originalname mimetype size' }
-        ]);
-
-        io.to(room).emit('message', message);
-
-        // AI 멘션이 있는 경우 AI 응답 생성
-        if (aiMentions.length > 0) {
-          for (const ai of aiMentions) {
-            const query = content.replace(new RegExp(`@${ai}\\b`, 'g'), '').trim();
-            await handleAIResponse(io, room, ai, query);
-          }
-        }
-
-        await SessionService.updateLastActivity(socket.user.id);
-
-        logDebug('message processed', {
-          messageId: message._id,
-          type: message.type,
-          room
+        logDebug('message queued', {
+          jobId: job.id,
+          type: messageData.type,
+          room: messageData.room
         });
 
       } catch (error) {
@@ -969,6 +939,89 @@ module.exports = function(io) {
       });
     }
   }
+
+  // 메시지 처리 워커 설정
+  messageQueue.process(async (job) => {
+    const { room, type, content, userId, fileData, timestamp } = job.data;
+
+    try {
+      let message;
+
+      // 메시지 타입별 처리
+      switch (type) {
+        case 'file':
+          if (!fileData || !fileData._id) {
+            throw new Error('파일 데이터가 올바르지 않습니다.');
+          }
+
+          const file = await File.findOne({
+            _id: fileData._id,
+            user: userId
+          });
+
+          if (!file) {
+            throw new Error('파일을 찾을 수 없거나 접근 권한이 없습니다.');
+          }
+
+          message = new Message({
+            room,
+            sender: userId,
+            type: 'file',
+            file: file._id,
+            content: content || '',
+            timestamp: new Date(timestamp),
+            reactions: {},
+            metadata: {
+              fileType: file.mimetype,
+              fileSize: file.size,
+              originalName: file.originalname
+            }
+          });
+          break;
+
+        case 'text':
+          if (!content) {
+            throw new Error('메시지 내용이 없습니다.');
+          }
+
+          message = new Message({
+            room,
+            sender: userId,
+            content,
+            type: 'text',
+            timestamp: new Date(timestamp),
+            reactions: {}
+          });
+          break;
+
+        default:
+          throw new Error('지원하지 않는 메시지 타입입니다.');
+      }
+
+      await message.save();
+      await message.populate([
+        { path: 'sender', select: 'name email profileImage' },
+        { path: 'file', select: 'filename originalname mimetype size' }
+      ]);
+
+      io.to(room).emit('message', message);
+
+      logDebug('message processed', {
+        messageId: message._id,
+        type: message.type,
+        room
+      });
+
+      return message;
+
+    } catch (error) {
+      logDebug('message processing error', {
+        jobId: job.id,
+        error: error.message
+      });
+      throw error; // Bull이 재시도 처리
+    }
+  });
 
   return io;
 };
