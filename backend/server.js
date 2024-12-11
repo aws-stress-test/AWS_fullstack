@@ -4,9 +4,11 @@ const cors = require('cors');
 const mongoose = require('mongoose');
 const http = require('http');
 const socketIO = require('socket.io');
+const { createAdapter } = require('@socket.io/redis-adapter');
 const path = require('path');
 const { router: roomsRouter, initializeSocket } = require('./routes/api/rooms');
 const routes = require('./routes');
+const redisManager = require('./config/redis');
 
 const app = express();
 const server = http.createServer(app);
@@ -68,12 +70,65 @@ app.get('/health', (req, res) => {
 // API 라우트 마운트
 app.use('/api', routes);
 
-// Socket.IO 설정
-const io = socketIO(server, { cors: corsOptions });
+// Socket.IO 설정 최적화
+const io = socketIO(server, {
+  cors: corsOptions,
+  // 연결 최적화
+  pingTimeout: 60000,
+  pingInterval: 25000,
+  transports: ['websocket'],
+  allowUpgrades: false,
+  
+  // 성능 최적화
+  perMessageDeflate: {
+    threshold: 2048,
+    zlibInflateFilter: () => true
+  },
+  
+  // 메모리 관리
+  maxHttpBufferSize: 1e6,  // 1MB
+  connectTimeout: 10000,   // 10s
+  
+  // Redis Adapter 설정
+  adapter: createAdapter(
+    redisManager.pubClient,
+    redisManager.subClient,
+    {
+      publishOnSpecificResponseOnly: true,
+      requestsTimeout: 5000
+    }
+  )
+});
+
+// Socket.IO 미들웨어
+io.use(async (socket, next) => {
+  try {
+    // 속도 제한 체크
+    const limit = await rateLimiter.checkLimit(socket.handshake.address);
+    if (!limit.success) {
+      return next(new Error('Rate limit exceeded'));
+    }
+
+    // 세션/토큰 검증
+    const token = socket.handshake.auth.token;
+    if (!token) {
+      return next(new Error('Authentication required'));
+    }
+
+    next();
+  } catch (error) {
+    next(new Error('Socket authentication failed'));
+  }
+});
+
+// 소켓 이벤트 핸들러 연결
 require('./sockets/chat')(io);
 
 // Socket.IO 객체 전달
 initializeSocket(io);
+
+// Express 앱에서 Socket.IO 접근 가능하도록 설정
+app.set('io', io);
 
 // 404 에러 핸들러
 app.use((req, res) => {
