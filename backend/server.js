@@ -9,6 +9,7 @@ const path = require('path');
 const { router: roomsRouter, initializeSocket } = require('./routes/api/rooms');
 const routes = require('./routes');
 const redisManager = require('./config/redis');
+const RateLimit = require('express-rate-limit');
 
 const app = express();
 const server = http.createServer(app);
@@ -74,47 +75,81 @@ app.use('/api', routes);
 const io = socketIO(server, {
   cors: corsOptions,
   // 연결 최적화
-  pingTimeout: 60000,
-  pingInterval: 25000,
-  transports: ['websocket'],
+  pingTimeout: 30000,        // 60s -> 30s로 감소
+  pingInterval: 10000,       // 25s -> 10s로 감소
+  transports: ['websocket'], // polling 제거
   allowUpgrades: false,
   
   // 성능 최적화
   perMessageDeflate: {
-    threshold: 2048,
-    zlibInflateFilter: () => true
+    threshold: 1024,         // 2KB -> 1KB로 감소
+    zlibInflateFilter: () => true,
+    memLevel: 4,            // 메모리 사용량 최적화
+    level: 3                // 압축 레벨 조정
   },
   
   // 메모리 관리
-  maxHttpBufferSize: 1e6,  // 1MB
-  connectTimeout: 10000,   // 10s
+  maxHttpBufferSize: 512e3,  // 1MB -> 512KB로 감소
+  connectTimeout: 5000,      // 10s -> 5s로 감소
   
-  // Redis Adapter 설정
+  // 클러스터링 설정
   adapter: createAdapter(
     redisManager.pubClient,
     redisManager.subClient,
     {
       publishOnSpecificResponseOnly: true,
-      requestsTimeout: 5000
+      requestsTimeout: 3000,           // 5s -> 3s로 감소
+      publishRetries: 2,               // 재시도 횟수 제한
+      key: 'socket.io'                 // Redis key prefix
     }
-  )
+  ),
+
+  // 추가 성능 설정
+  upgradeTimeout: 5000,                // 업그레이드 타임아웃
+  serveClient: false,                  // 클라이언트 서빙 비활성화
+  allowEIO3: false,                    // EIO3 비활성화
+  cors: {
+    ...corsOptions,
+    preflightContinue: false,
+    optionsSuccessStatus: 204
+  }
 });
 
-// Socket.IO 미들웨어
+// 연결 제한 설정
+const connectionLimiter = new RateLimit({
+  windowMs: 60 * 1000,     // 1분
+  max: 100,                // IP당 최대 연결 수
+  message: 'Too many connections'
+});
+
+// Socket.IO 미들웨어 최적화
 io.use(async (socket, next) => {
   try {
-    // 속도 제한 체크
-    const limit = await rateLimiter.checkLimit(socket.handshake.address);
-    if (!limit.success) {
-      return next(new Error('Rate limit exceeded'));
+    // 연결 제한 체크
+    const limited = await connectionLimiter.check(socket.handshake.address);
+    if (limited) {
+      return next(new Error('Too many connections'));
     }
 
-    // 세션/토큰 검증
+    // 메모리 사용량 체크
+    const memoryUsage = process.memoryUsage();
+    if (memoryUsage.heapUsed > 0.8 * memoryUsage.heapTotal) {
+      return next(new Error('Server is busy'));
+    }
+
+    // 토큰 검증 최적화
     const token = socket.handshake.auth.token;
     if (!token) {
       return next(new Error('Authentication required'));
     }
 
+    // 캐시된 세션 확인
+    const session = await redisManager.getSession(token);
+    if (!session) {
+      return next(new Error('Invalid session'));
+    }
+
+    socket.user = session.user;
     next();
   } catch (error) {
     next(new Error('Socket authentication failed'));
