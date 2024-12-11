@@ -10,6 +10,33 @@ class OptimizedRedisAdapter {
     this.connectionPromises = new Map();
     this.roomSubscriptionCache = new Map();
     this.SUBSCRIPTION_TIMEOUT = 3000;
+
+    // Sentinel 이벤트 핸들링
+    this.pubClient.on('+failover-end', this.handleFailover.bind(this));
+    this.subClient.on('+failover-end', this.handleFailover.bind(this));
+  }
+
+  async handleFailover() {
+    logger.info('Redis Adapter Failover 처리 시작');
+    try {
+      // 기존 구독 정보 백업
+      const roomsToResubscribe = new Set(this.subscribedRooms);
+      
+      // 구독 상태 초기화
+      this.subscribedRooms.clear();
+      this.roomSubscriptionCache.clear();
+
+      // 재구독
+      for (const room of roomsToResubscribe) {
+        if (this.shouldSubscribe(room)) {
+          await this.subscribeToRoom(room, new Set([room]));
+        }
+      }
+
+      logger.info('Redis Adapter Failover 처리 완료');
+    } catch (error) {
+      logger.error('Redis Adapter Failover 처리 실패:', error);
+    }
   }
 
   createAdapter(io) {
