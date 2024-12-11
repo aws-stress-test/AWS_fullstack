@@ -1,43 +1,43 @@
-import React, { useState, useEffect } from 'react';
-import { useRouter } from 'next/router';
-import { Card } from '@goorm-dev/vapor-core';
-import { 
-  Button, 
-  Input, 
-  Text,
-  Alert,
-  Label
-} from '@goorm-dev/vapor-components';
-import { AlertCircle, Info, Clock, LockKeyhole, Mail, WifiOff } from 'lucide-react';
-import authService from '../services/authService';
-import { withoutAuth } from '../middleware/withAuth';
+import React, { useState, useEffect } from "react";
+import { useRouter } from "next/router";
+import { Card } from "@goorm-dev/vapor-core";
+import { Button, Input, Text, Alert, Label } from "@goorm-dev/vapor-components";
+import {
+  AlertCircle,
+  Info,
+  Clock,
+  LockKeyhole,
+  Mail,
+  WifiOff,
+} from "lucide-react";
+import authService from "../services/authService";
+import { withoutAuth } from "../middleware/withAuth";
 
 const Login = () => {
-  const [formData, setFormData] = useState({ 
-    email: '', 
-    password: '' 
-  });
+  const [formData, setFormData] = useState({ email: "", password: "" });
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [serverStatus, setServerStatus] = useState({ checking: true, connected: false });
+  const [serverStatus, setServerStatus] = useState({
+    checking: true,
+    connected: false,
+  });
   const router = useRouter();
   const { redirect } = router.query;
 
-  // 서버 연결 상태 확인
   useEffect(() => {
     const checkServerConnection = async () => {
       try {
         await authService.checkServerConnection();
         setServerStatus({ checking: false, connected: true });
       } catch (error) {
-        console.error('Server connection check failed:', error);
+        console.error("Server connection check failed:", error);
         setServerStatus({ checking: false, connected: false });
         setError({
-          type: 'error',
-          title: '서버 연결 실패',
-          message: '서버와 연결할 수 없습니다.',
-          suggestion: '인터넷 연결을 확인하고 잠시 후 다시 시도해주세요.',
-          Icon: WifiOff
+          type: "error",
+          title: "서버 연결 실패",
+          message: "서버와 연결할 수 없습니다.",
+          suggestion: "인터넷 연결을 확인하고 잠시 후 다시 시도해주세요.",
+          Icon: WifiOff,
         });
       }
     };
@@ -46,36 +46,34 @@ const Login = () => {
   }, []);
 
   const validateForm = () => {
-    // 이메일 검증
-    if (!formData.email?.trim()) {
+    const { email, password } = formData;
+    if (!email.trim()) {
       setError({
-        type: 'warning',
-        title: '입력 오류',
-        message: '이메일을 입력해주세요.',
-        field: 'email'
+        type: "warning",
+        title: "입력 오류",
+        message: "이메일을 입력해주세요.",
+        field: "email",
       });
       return false;
     }
 
-    // 이메일 형식 검증
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(formData.email.trim())) {
+    if (!emailRegex.test(email.trim())) {
       setError({
-        type: 'warning',
-        title: '입력 오류',
-        message: '올바른 이메일 형식이 아닙니다.',
-        field: 'email'
+        type: "warning",
+        title: "입력 오류",
+        message: "올바른 이메일 형식이 아닙니다.",
+        field: "email",
       });
       return false;
     }
 
-    // 비밀번호 검증
-    if (!formData.password) {
+    if (!password) {
       setError({
-        type: 'warning',
-        title: '입력 오류',
-        message: '비밀번호를 입력해주세요.',
-        field: 'password'
+        type: "warning",
+        title: "입력 오류",
+        message: "비밀번호를 입력해주세요.",
+        field: "password",
       });
       return false;
     }
@@ -87,64 +85,49 @@ const Login = () => {
     e.preventDefault();
     setError(null);
 
-    // 서버 연결 상태 확인
     if (!serverStatus.connected) {
       setError({
-        type: 'error',
-        title: '서버 연결 실패',
-        message: '서버와 연결할 수 없습니다.',
-        suggestion: '인터넷 연결을 확인하고 잠시 후 다시 시도해주세요.',
-        Icon: WifiOff
+        type: "error",
+        title: "서버 연결 실패",
+        message: "서버와 연결할 수 없습니다.",
+        suggestion: "인터넷 연결을 확인하고 잠시 후 다시 시도해주세요.",
+        Icon: WifiOff,
       });
       return;
     }
 
-    // 폼 유효성 검사
-    if (!validateForm()) {
-      return;
-    }
+    if (!validateForm()) return;
 
     try {
       setLoading(true);
-
-      // 로그인 요청 데이터 준비
       const loginCredentials = {
         email: formData.email.trim(),
-        password: formData.password
+        password: formData.password,
       };
 
-      // 디버그 로깅
-      console.log('Submitting login request:', {
+      console.log("Submitting login request:", {
         email: loginCredentials.email,
         hasPassword: !!loginCredentials.password,
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
       });
 
-      // 로그인 요청
       await authService.login(loginCredentials);
-      const redirectUrl = router.query.redirect || '/chat-rooms';
-      router.push(redirectUrl);
-
+      router.push(redirect || "/chat-rooms");
     } catch (err) {
-      console.error('Login error:', err);
-
-      if (err.isAxiosError && err.response?.status === 500) {
-        setError({
-          type: 'error',
-          title: '서버 오류',
-          message: '서버에서 오류가 발생했습니다.',
-          suggestion: '잠시 후 다시 시도해주세요.',
-          Icon: AlertCircle
-        });
-      } else {
-        setError({
-          type: 'error',
-          title: '로그인 실패',
-          message: err.message || '로그인 처리 중 오류가 발생했습니다.',
-          suggestion: '입력하신 정보를 다시 확인해주세요.',
-          Icon: AlertCircle
-        });
-      }
+      console.error("Login error:", err);
+      setError({
+        type: "error",
+        title:
+          err.isAxiosError && err.response?.status === 500
+            ? "서버 오류"
+            : "로그인 실패",
+        message: err.message || "로그인 처리 중 오류가 발생했습니다.",
+        suggestion:
+          err.isAxiosError && err.response?.status === 500
+            ? "잠시 후 다시 시도해주세요."
+            : "입력하신 정보를 다시 확인해주세요.",
+        Icon: AlertCircle,
+      });
     } finally {
       setLoading(false);
     }
@@ -152,10 +135,7 @@ const Login = () => {
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
-    setFormData(prev => ({
-      ...prev,
-      [name]: value
-    }));
+    setFormData((prev) => ({ ...prev, [name]: value }));
     if (error?.field === name) setError(null);
   };
 
@@ -211,7 +191,7 @@ const Login = () => {
                 onChange={handleInputChange}
                 placeholder="이메일을 입력하세요"
                 disabled={loading}
-                state={error?.field === 'email' ? 'error' : undefined}
+                state={error?.field === "email" ? "error" : undefined}
                 autoComplete="email"
                 required
                 aria-required="true"
@@ -230,7 +210,7 @@ const Login = () => {
                 onChange={handleInputChange}
                 placeholder="비밀번호를 입력하세요"
                 disabled={loading}
-                state={error?.field === 'password' ? 'error' : undefined}
+                state={error?.field === "password" ? "error" : undefined}
                 autoComplete="current-password"
                 required
                 aria-required="true"
@@ -244,18 +224,17 @@ const Login = () => {
               disabled={loading || !serverStatus.connected}
               className="auth-submit-button"
             >
-              {loading ? '로그인 중...' : '로그인'}
+              {loading ? "로그인 중..." : "로그인"}
             </Button>
 
             <div className="auth-footer">
-              <Text size="sm">
-                계정이 없으신가요?
-              </Text>
-              <br/><br/>
+              <Text size="sm">계정이 없으신가요?</Text>
+              <br />
+              <br />
               <Button
                 variant="text"
                 size="sm"
-                onClick={() => router.push('/register')}
+                onClick={() => router.push("/register")}
                 disabled={loading || !serverStatus.connected}
               >
                 회원가입
