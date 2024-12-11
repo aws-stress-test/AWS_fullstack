@@ -11,26 +11,16 @@ const sentinelConfig = {
   name: 'mymaster',
   ...(process.env.REDIS_PASSWORD ? { password: process.env.REDIS_PASSWORD } : {}),
   
-  // 연결 최적화
-  connectTimeout: 10000,
-  commandTimeout: 5000,
-  enableAutoPipelining: true,
+  connectTimeout: 15000,
+  commandTimeout: 8000,
   maxRetriesPerRequest: 3,
   enableReadyCheck: false,
-  autoResubscribe: true,
-  autoResendUnfulfilledCommands: true,
+  enableAutoPipelining: true,
+  autoResubscribe: false,
   
   retryStrategy: (times) => {
-    const delay = Math.min(times * 50, 1000); // 최대 1초로 감소
-    return delay;
-  },
-  
-  reconnectOnError: (err) => {
-    const targetError = 'READONLY';
-    if (err.message.includes(targetError)) {
-      return true;
-    }
-    return false;
+    if (times > 3) return null;
+    return Math.min(times * 200, 1000);
   }
 };
 
@@ -40,7 +30,7 @@ class RedisManager {
     this.subClient = null;
     this.queues = new Map();
     this.messageBuffer = [];
-    this.BATCH_SIZE = 100;
+    this.BATCH_SIZE = 200;
   }
 
   async connect() {
@@ -79,7 +69,8 @@ class RedisManager {
 
   async setMemoryPolicy() {
     try {
-      await this.pubClient.config('SET', 'maxmemory-policy', 'allkeys-lru');
+      await this.pubClient.config('SET', 'maxmemory-policy', 'volatile-lru');
+      await this.pubClient.config('SET', 'maxmemory', '2gb');
       await this.pubClient.config('SET', 'appendonly', 'no');
     } catch (error) {
       logger.error('Redis 메모리 정책 설정 실패:', error);

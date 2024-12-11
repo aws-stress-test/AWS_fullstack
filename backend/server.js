@@ -75,8 +75,8 @@ app.use('/api', routes);
 const io = socketIO(server, {
   cors: corsOptions,
   // 연결 최적화
-  pingTimeout: 30000,        // 60s -> 30s로 감소
-  pingInterval: 10000,       // 25s -> 10s로 감소
+  pingTimeout: 20000,        // 60s -> 30s로 감소
+  pingInterval: 5000,       // 25s -> 10s로 감소
   transports: ['websocket'], // polling 제거
   allowUpgrades: false,
   
@@ -88,9 +88,9 @@ const io = socketIO(server, {
     level: 3                // 압축 레벨 조정
   },
   
-  // 메모리 관리
-  maxHttpBufferSize: 512e3,  // 1MB -> 512KB로 감소
-  connectTimeout: 5000,      // 10s -> 5s로 감소
+  // 메모리 관리 최적화
+  maxHttpBufferSize: 256e3,      // 512KB -> 256KB
+  connectTimeout: 3000,          // 5000 -> 3000
   
   // 클러스터링 설정
   adapter: createAdapter(
@@ -98,9 +98,10 @@ const io = socketIO(server, {
     redisManager.subClient,
     {
       publishOnSpecificResponseOnly: true,
-      requestsTimeout: 3000,           // 5s -> 3s로 감소
-      publishRetries: 2,               // 재시도 횟수 제한
-      key: 'socket.io'                 // Redis key prefix
+      requestsTimeout: 1500,        // 3000 -> 1500
+      publishRetries: 1,           // 2 -> 1
+      key: 'socket.io',           // 프로세스별 키 제거
+      publishTimeout: 1000                  // Redis key prefix
     }
   ),
 
@@ -117,9 +118,10 @@ const io = socketIO(server, {
 
 // 연결 제한 설정
 const connectionLimiter = new RateLimit({
-  windowMs: 60 * 1000,     // 1분
-  max: 100,                // IP당 최대 연결 수
-  message: 'Too many connections'
+  windowMs: 60 * 1000,     
+  max: 200,                // 100 -> 200으로 증가 (워커당 200명)
+  message: 'Too many connections',
+  skipFailedRequests: true // 실패한 요청은 카운트하지 않음
 });
 
 // Socket.IO 미들웨어 최적화
@@ -133,7 +135,7 @@ io.use(async (socket, next) => {
 
     // 메모리 사용량 체크
     const memoryUsage = process.memoryUsage();
-    if (memoryUsage.heapUsed > 0.8 * memoryUsage.heapTotal) {
+    if (memoryUsage.heapUsed > 0.7 * memoryUsage.heapTotal) {
       return next(new Error('Server is busy'));
     }
 
@@ -155,6 +157,21 @@ io.use(async (socket, next) => {
     next(new Error('Socket authentication failed'));
   }
 });
+
+// 메모리 모니터링 추가
+// setInterval(() => {
+//   const memoryUsage = process.memoryUsage();
+//   const heapUsed = Math.round(memoryUsage.heapUsed / 1024 / 1024);
+//   const heapTotal = Math.round(memoryUsage.heapTotal / 1024 / 1024);
+  
+//   console.log('메모리 사용량:', {
+//     pid: process.pid,
+//     heapUsed: `${heapUsed}MB`,
+//     heapTotal: `${heapTotal}MB`,
+//     percentage: `${Math.round((heapUsed / heapTotal) * 100)}%`,
+//     connections: io.engine.clientsCount
+//   });
+// }, 30000);
 
 // 소켓 이벤트 핸들러 연결
 require('./sockets/chat')(io);
