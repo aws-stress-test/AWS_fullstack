@@ -42,7 +42,8 @@ if (cluster.isPrimary) {
       'https://0.0.0.0:3000',
       'https://goorm-ktb-018.goorm.team',
       'http://goorm-ktb-018.goorm.team',
-      'http://10.0.5.112' 
+      'http://10.0.5.112',
+      'https://api.goorm-ktb-018.goorm.team'
     ],
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],

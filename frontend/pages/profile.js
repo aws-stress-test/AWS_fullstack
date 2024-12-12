@@ -106,6 +106,9 @@ const Profile = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    setError('');
+    setSuccess('');
+    console.log(formData);
     setMessage({ type: "", text: "" });
 
     if (formData.newPassword !== formData.confirmPassword) {
@@ -140,7 +143,8 @@ const Profile = () => {
         newPassword: "",
         confirmPassword: "",
       }));
-      window.dispatchEvent(new Event("userProfileUpdate"));
+      // 전역 이벤트 발생
+      window.dispatchEvent(new Event('userProfileUpdate'));
     } catch (err) {
       console.error("Profile update error:", err);
       setMessage({

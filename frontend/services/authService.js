@@ -261,6 +261,7 @@ class AuthService {
   async changePassword(currentPassword, newPassword) {
     try {
       const user = this.getCurrentUser();
+      console.log(user);
       if (!user?.token) {
         throw new Error('인증 정보가 없습니다.');
       }
