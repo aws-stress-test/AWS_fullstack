@@ -1,4 +1,4 @@
-import { useEffect, useState, Suspense } from "react";
+import { React, useEffect, useState, Suspense } from "react";
 import { useRouter } from "next/router";
 import authService from "../services/authService";
 import "../styles/globals.css";
