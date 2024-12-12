@@ -85,17 +85,43 @@ const LoadingIndicator = ({ text }) => (
 
 const TableWrapper = memo(
   ({ children, onScroll, loadingMore, hasMore, rooms }) => {
-    const { ref, inView } = useInView(SCROLL_CONFIG);
-
+    const containerRef = useRef(null);
+    const scrollTimeoutRef = useRef(null);
+    
     useEffect(() => {
-      if (inView && hasMore && !loadingMore) {
-        onScroll();
-      }
-    }, [inView, hasMore, loadingMore, onScroll]);
+      const container = containerRef.current;
+      if (!container) return;
+
+      const handleScroll = () => {
+        if (scrollTimeoutRef.current) {
+          window.cancelAnimationFrame(scrollTimeoutRef.current);
+        }
+
+        scrollTimeoutRef.current = window.requestAnimationFrame(() => {
+          if (!hasMore || loadingMore) return;
+
+          const { scrollTop, scrollHeight, clientHeight } = container;
+          const scrollPercentage = (scrollTop + clientHeight) / scrollHeight;
+          
+          if (scrollPercentage > 0.9) {
+            onScroll();
+          }
+        });
+      };
+
+      container.addEventListener('scroll', handleScroll, { passive: true });
+
+      return () => {
+        if (scrollTimeoutRef.current) {
+          window.cancelAnimationFrame(scrollTimeoutRef.current);
+        }
+        container.removeEventListener('scroll', handleScroll);
+      };
+    }, [hasMore, loadingMore, onScroll]);
 
     return (
       <div
-        ref={ref}
+        ref={containerRef}
         className="chat-rooms-table"
         style={{
           height: "430px",
@@ -355,34 +381,35 @@ function ChatRoomsComponent() {
       const nextPage = Math.floor(rooms.length / pageSize);
       console.log("Loading page:", nextPage);
       setPageIndex(nextPage);
+      await fetchRooms(true);
 
-      const response = await axiosInstance.get("/api/rooms", {
-        params: {
-          page: nextPage,
-          pageSize,
-          sortField: sorting[0]?.id,
-          sortOrder: sorting[0]?.desc ? "desc" : "asc",
-        },
-      });
+      // const response = await axiosInstance.get("/api/rooms", {
+      //   params: {
+      //     page: nextPage,
+      //     pageSize,
+      //     sortField: sorting[0]?.id,
+      //     sortOrder: sorting[0]?.desc ? "desc" : "asc",
+      //   },
+      // });
 
-      if (response.data?.success) {
-        const { data: newRooms, metadata } = response.data;
-        console.log("Loaded new rooms:", {
-          count: newRooms.length,
-          hasMore: metadata.hasMore,
-        });
+      // if (response.data?.success) {
+      //   const { data: newRooms, metadata } = response.data;
+      //   console.log("Loaded new rooms:", {
+      //     count: newRooms.length,
+      //     hasMore: metadata.hasMore,
+      //   });
 
-        setRooms((prev) => {
-          const existingIds = new Set(prev.map((room) => room._id));
-          const uniqueNewRooms = newRooms.filter(
-            (room) => !existingIds.has(room._id)
-          );
-          console.log("Unique new rooms:", uniqueNewRooms.length);
-          return [...prev, ...uniqueNewRooms];
-        });
+      //   setRooms((prev) => {
+      //     const existingIds = new Set(prev.map((room) => room._id));
+      //     const uniqueNewRooms = newRooms.filter(
+      //       (room) => !existingIds.has(room._id)
+      //     );
+      //     console.log("Unique new rooms:", uniqueNewRooms.length);
+      //     return [...prev, ...uniqueNewRooms];
+      //   });
 
-        setHasMore(newRooms.length === pageSize && metadata.hasMore);
-      }
+      //   setHasMore(newRooms.length === pageSize && metadata.hasMore);
+      // }
     } catch (error) {
       console.error("Load more rooms error:", error);
       handleFetchError(error, true);
@@ -391,7 +418,8 @@ function ChatRoomsComponent() {
       isLoadingRef.current = false;
       Toast.info("추가 채팅방을 불러왔습니다.");
     }
-  }, [loadingMore, hasMore, rooms.length, pageSize, sorting, handleFetchError]);
+  //}, [loadingMore, hasMore, rooms.length, pageSize, sorting, handleFetchError]);
+  }, [loadingMore, hasMore, rooms.length, pageSize, fetchRooms]);
 
   // 페이지 인덱스 변경 시 데이터 로드
   useEffect(() => {
