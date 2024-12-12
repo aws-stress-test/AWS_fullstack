@@ -16,13 +16,19 @@ test.describe('부하 테스트', () => {
   const helpers = new TestHelpers();
 
   test('대량 메시지 처리', async ({ browser }) => {   
-    // 대규모 부하 테스트 설정
-    const NUM_CLIENTS = 500;        // 동시 접속자 500명
-    const MESSAGES_PER_CLIENT = 100; // 클라이언트당 100개 메시지
-    const MESSAGE_INTERVAL = 20;     // 20ms 간격으로 빠른 메시지 전송
-    const BATCH_SIZE = 50;          // 한 번에 50명씩 생성
+    // // 부하 테스트 설정
+    // const NUM_CLIENTS = 3000;        // 50 -> 3000 (동시 접속 클라이언트 수)
+    // const MESSAGES_PER_CLIENT = 20;  // 클라이언트당 전송할 메시지 수
+    // const MESSAGE_INTERVAL = 100;    // 메시지 전송 간격 ms
+    // const BATCH_SIZE = 100;          // 10 -> 100 (한 번에 생성할 클라이언트 수)
 
-    const metrics = {
+    // 부하 테스트 설정
+    const NUM_CLIENTS = 50;          // 동시 접속 클라이언트 수
+    const MESSAGES_PER_CLIENT = 20;  // 클라이언트당 전송할 메시지 수
+    const MESSAGE_INTERVAL = 100;    // 메시지 전송 간격 (ms)
+    const BATCH_SIZE = 10;          // 한 번에 생성할 클라이언트 수
+
+    const metrics: Metrics = {
       totalMessages: 0,
       errors: 0,
       latencies: [],

@@ -13,6 +13,7 @@ test.describe('실시간 상태 테스트', () => {
     const roomName = await helpers.joinOrCreateRoom(user1, 'Presence');
     const user1Url = user1.url();
     const user1RoomParam = new URLSearchParams(new URL(user1Url).search).get('room');
+    if (!user1RoomParam) throw new Error('Room parameter not found');
 
     
     // 두 번째 사용자

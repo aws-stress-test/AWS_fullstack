@@ -2,13 +2,13 @@ import { PlaywrightTestConfig, devices } from '@playwright/test';
 
 const config: PlaywrightTestConfig = {
   testDir: './test',
-  timeout: 600000, // 전체 테스트 타임아웃 증가
+  timeout: 60000,
   expect: { 
-    timeout: 20000  // expect 작업 타임아웃 증가
+    timeout: 20000
   },
-  fullyParallel: false,  // 순차 실행으로 변경
-  retries: 0, // 재시도 횟수 설정
-  workers: 2,  // 동시 실행 워커 수 제한
+  fullyParallel: false,
+  retries: 0,
+  workers: 1,  // 부하 테스트는 단일 워커로 실행
   reporter: [['html', { open: 'never' }]],
   use: {
     baseURL: process.env.BASE_URL || 'http://localhost:3000',
@@ -30,6 +30,11 @@ const config: PlaywrightTestConfig = {
     {
       name: 'webkit',
       use: { ...devices['Desktop Safari'] },
+    },
+    {
+      name: 'load-tests',
+      testMatch: /.*load.*\.spec\.ts/,
+      timeout: 120000, // 부하 테스트는 더 긴 타임아웃이 필요할 수 있음
     },
   ],
 };
