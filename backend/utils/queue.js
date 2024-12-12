@@ -101,50 +101,45 @@ const processBulkMessages = async (messages) => {
 
 // 동시성 설정 (CPU 코어 수에 따라 조정)
 messageQueue.process(8, async (job) => {
+  console.log("Processing job:", job.id);
   try {
-    logger.info("Processing job:", job.id);
     const messages = Array.isArray(job.data) ? job.data : [job.data];
-    return await processBulkMessages(messages);
+    console.log("Job data:", messages);
+    const result = await processBulkMessages(messages);
+    console.log("Job completed successfully:", job.id);
+    return result;
   } catch (error) {
-    logger.error("Message processing error:", { jobId: job.id, error });
+    console.error("Job processing error:", { jobId: job.id, error });
     throw error;
   }
-});
-
-// 이벤트 핸들러
-messageQueue.on("error", (error) => {
-  logger.error("Message queue error:", error);
-});
-
-messageQueue.on("failed", (job, error) => {
-  logger.error("Job failed:", { jobId: job.id, error });
-});
-
-messageQueue.on("completed", (job) => {
-  logger.info("Job completed:", { jobId: job.id });
 });
 
 // 큐 상태 모니터링
 setInterval(async () => {
   try {
     const jobCounts = await messageQueue.getJobCounts();
-    logger.info("Queue status:", jobCounts);
+    console.log("Queue status:", jobCounts);
+    if (jobCounts.active === 0 && jobCounts.waiting > 0) {
+      console.warn("Jobs are waiting but not processing. Check worker status.");
+    }
   } catch (error) {
-    logger.error("Error fetching queue status:", error);
+    console.error("Error fetching queue status:", error);
   }
-}, 30000);
+}, 10000);
 
-// Redis Sentinel 연결 테스트
+// Redis 상태 체크
 (async () => {
   try {
+    const redisManager = new RedisManager();
     await redisManager.connect();
-    logger.info("Message queue connected successfully.");
+    console.log("Redis connected successfully.");
+    console.log("Redis pubClient status:", redisManager.pubClient.status);
+    console.log("Redis subClient status:", redisManager.subClient.status);
 
-    // 테스트 작업 추가
     const testJob = await messageQueue.add({ test: "data" });
-    logger.info("Test job added:", testJob.id);
+    console.log("Test job added:", testJob.id);
   } catch (error) {
-    logger.error("Failed to connect message queue or add test job:", error);
+    console.error("Failed to connect Redis or add test job:", error);
   }
 })();
 
