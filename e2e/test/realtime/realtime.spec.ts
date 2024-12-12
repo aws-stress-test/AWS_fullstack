@@ -1,5 +1,5 @@
 // test/realtime/realtime.spec.ts
-import { test, expect } from '@playwright/test';
+import { test, expect, Page } from '@playwright/test';
 import { TestHelpers } from '../helpers/test-helpers';
 
 test.describe('실시간 기능 테스트', () => {
@@ -13,9 +13,10 @@ test.describe('실시간 기능 테스트', () => {
     const roomName = await helpers.joinOrCreateRoom(host, 'Realtime');
     const hostUrl = host.url();
     const hostRoomParam = new URLSearchParams(new URL(hostUrl).search).get('room');
+    if (!hostRoomParam) throw new Error('Room parameter not found');
     
     // 참여자들 - 순차적으로 생성하고 참여
-    const participants = [];
+    const participants: Page[] = [];
     for (let i = 0; i < 3; i++) {
       try {
         const page = await browser.newPage();
@@ -28,7 +29,7 @@ test.describe('실시간 기능 테스트', () => {
       }
     }
     
-    // 참여자 목록 확인
+    // 참여자 목��� 확인
     // await expect(host.locator('.participants-count')).toContainText('4');
     
     // try {

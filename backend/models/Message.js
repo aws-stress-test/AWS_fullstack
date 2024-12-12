@@ -3,8 +3,7 @@ const mongoose = require('mongoose');
 const MessageSchema = new mongoose.Schema({
   room: { 
     type: String, 
-    required: [true, '채팅방 ID는 필수입니다.'],
-    index: true
+    required: [true, '채팅방 ID는 필수입니다.']
   },
   content: { 
     type: String,
@@ -16,14 +15,12 @@ const MessageSchema = new mongoose.Schema({
   },
   sender: { 
     type: mongoose.Schema.Types.ObjectId, 
-    ref: 'User',
-    index: true 
+    ref: 'User'
   },
   type: { 
     type: String, 
     enum: ['text', 'system', 'ai', 'file'], 
-    default: 'text',
-    index: true
+    default: 'text'
   },
   file: {
     type: mongoose.Schema.Types.ObjectId,
@@ -45,8 +42,7 @@ const MessageSchema = new mongoose.Schema({
   }],
   timestamp: { 
     type: Date, 
-    default: Date.now,
-    index: true 
+    default: Date.now
   },
   readers: [{
     userId: { 
@@ -75,8 +71,7 @@ const MessageSchema = new mongoose.Schema({
   },
   isDeleted: {
     type: Boolean,
-    default: false,
-    index: true
+    default: false
   }
 }, {
   timestamps: true,
@@ -90,16 +85,132 @@ const MessageSchema = new mongoose.Schema({
   }
 });
 
-// 복합 인덱스 설정
-MessageSchema.index({ room: 1, timestamp: -1 });
-MessageSchema.index({ room: 1, isDeleted: 1 });
-MessageSchema.index({ 'readers.userId': 1 });
-MessageSchema.index({ sender: 1 });
-MessageSchema.index({ type: 1 });
-MessageSchema.index({ timestamp: -1 });
-MessageSchema.index({ 'reactions.userId': 1 });
+// 최적화된 복합 인덱스
+MessageSchema.index({ room: 1, timestamp: -1, isDeleted: 1 }, { 
+  name: 'optimal_room_messages',
+  background: true
+});
 
-// 읽음 처리 Static 메소드 개선
+MessageSchema.index({ room: 1, type: 1, timestamp: -1 }, { 
+  name: 'room_type_messages',
+  background: true
+});
+
+MessageSchema.index({ sender: 1, room: 1, timestamp: -1 }, { 
+  name: 'user_room_messages',
+  background: true
+});
+
+MessageSchema.index({ room: 1, 'readers.userId': 1, timestamp: -1 }, { 
+  name: 'room_readers',
+  background: true,
+  sparse: true
+});
+
+MessageSchema.index({ 'mentions': 1, room: 1, timestamp: -1 }, { 
+  name: 'mentions_room',
+  background: true,
+  sparse: true
+});
+
+// 쿼리 플랜 분석 메서드
+MessageSchema.statics.analyzeQueryPlan = async function(roomId, options = {}) {
+  const queries = {
+    basicRoomQuery: this.find({
+      room: roomId,
+      isDeleted: false
+    }).explain('executionStats'),
+
+    timeRangeQuery: this.find({
+      room: roomId,
+      isDeleted: false,
+      timestamp: { $lt: new Date() }
+    }).explain('executionStats'),
+
+    fullQuery: this.find({
+      room: roomId,
+      isDeleted: false,
+      timestamp: { $lt: new Date() }
+    })
+    .select('content type sender timestamp file aiType')
+    .sort({ timestamp: -1 })
+    .limit(30)
+    .explain('executionStats'),
+
+    readerQuery: this.find({
+      room: roomId,
+      'readers.userId': options.userId
+    }).explain('executionStats')
+  };
+
+  const plans = {};
+  for (const [name, query] of Object.entries(queries)) {
+    plans[name] = await query;
+  }
+
+  return {
+    plans,
+    analysis: this.analyzePlans(plans)
+  };
+};
+
+MessageSchema.statics.analyzePlans = function(plans) {
+  const analysis = {
+    recommendations: [],
+    indexSuggestions: []
+  };
+
+  for (const [queryName, plan] of Object.entries(plans)) {
+    const stats = plan.executionStats;
+    
+    const scanRatio = stats.totalDocsExamined / stats.nReturned;
+    if (scanRatio > 2) {
+      analysis.recommendations.push({
+        query: queryName,
+        issue: 'High scan ratio',
+        ratio: scanRatio,
+        suggestion: 'Consider adding or reviewing indexes for this query pattern'
+      });
+    }
+
+    if (stats.executionTimeMillis > 100) {
+      analysis.recommendations.push({
+        query: queryName,
+        issue: 'Slow execution',
+        time: stats.executionTimeMillis,
+        suggestion: 'Query optimization needed'
+      });
+    }
+
+    const stage = plan.queryPlanner.winningPlan.inputStage;
+    if (stage.stage === 'COLLSCAN') {
+      analysis.indexSuggestions.push({
+        query: queryName,
+        suggestion: 'Create index for frequently used fields'
+      });
+    }
+  }
+
+  return analysis;
+};
+
+// 최적화된 쿼리 메서드
+MessageSchema.statics.findRoomMessages = function(roomId, before, limit = 30) {
+  const query = {
+    room: roomId,
+    isDeleted: false,
+    ...(before && { timestamp: { $lt: new Date(Number(before)) } })
+  };
+
+  return this.find(query)
+    .select('content type sender timestamp file aiType reactions readers')
+    .sort({ timestamp: -1 })
+    .limit(limit)
+    .lean()
+    .hint('optimal_room_messages');
+};
+
+// 읽음 처리 최적화
 MessageSchema.statics.markAsRead = async function(messageIds, userId) {
   if (!messageIds?.length || !userId) return;
 
@@ -122,141 +233,126 @@ MessageSchema.statics.markAsRead = async function(messageIds, userId) {
   }));
 
   try {
-    const result = await this.bulkWrite(bulkOps, { ordered: false });
+    const result = await this.bulkWrite(bulkOps, { 
+      ordered: false,
+      w: 1
+    });
     return result.modifiedCount;
   } catch (error) {
-    console.error('Mark as read error:', {
-      error,
-      messageIds,
-      userId
-    });
+    console.error('Mark as read error:', error);
     throw error;
   }
 };
 
-// 리액션 처리 메소드 개선
+// 리액션 처리 최적화
 MessageSchema.methods.addReaction = async function(emoji, userId) {
   try {
-    if (!this.reactions) {
-      this.reactions = new Map();
-    }
-
-    const userReactions = this.reactions.get(emoji) || [];
-    if (!userReactions.includes(userId)) {
-      userReactions.push(userId);
-      this.reactions.set(emoji, userReactions);
-      await this.save();
-    }
+    const result = await this.constructor.findOneAndUpdate(
+      { 
+        _id: this._id,
+        [`reactions.${emoji}`]: { $ne: userId }
+      },
+      { 
+        $push: { [`reactions.${emoji}`]: userId }
+      },
+      { new: true, select: 'reactions' }
+    );
     
-    return this.reactions.get(emoji);
+    return result?.reactions?.get(emoji) || [];
   } catch (error) {
-    console.error('Add reaction error:', {
-      error,
-      messageId: this._id,
-      emoji,
-      userId
-    });
+    console.error('Add reaction error:', error);
     throw error;
   }
 };
 
 MessageSchema.methods.removeReaction = async function(emoji, userId) {
   try {
-    if (!this.reactions || !this.reactions.has(emoji)) return;
-
-    const userReactions = this.reactions.get(emoji) || [];
-    const updatedReactions = userReactions.filter(id => 
-      id.toString() !== userId.toString()
+    const result = await this.constructor.findOneAndUpdate(
+      { _id: this._id },
+      { 
+        $pull: { [`reactions.${emoji}`]: userId }
+      },
+      { new: true, select: 'reactions' }
     );
-    
-    if (updatedReactions.length === 0) {
-      this.reactions.delete(emoji);
-    } else {
-      this.reactions.set(emoji, updatedReactions);
+
+    if (result?.reactions?.get(emoji)?.length === 0) {
+      await this.constructor.updateOne(
+        { _id: this._id },
+        { $unset: { [`reactions.${emoji}`]: "" } }
+      );
     }
-    
-    await this.save();
-    return this.reactions.get(emoji);
+
+    return result?.reactions?.get(emoji) || [];
   } catch (error) {
-    console.error('Remove reaction error:', {
-      error,
-      messageId: this._id,
-      emoji,
-      userId
-    });
+    console.error('Remove reaction error:', error);
     throw error;
   }
 };
 
-// 메시지 소프트 삭제 메소드 추가
+// 소프트 삭제 최적화
 MessageSchema.methods.softDelete = async function() {
-  this.isDeleted = true;
-  await this.save();
+  return this.constructor.updateOne(
+    { _id: this._id },
+    { $set: { isDeleted: true } }
+  );
 };
 
-// 메시지 삭제 전 후크 개선
+// 훅 최적화
+MessageSchema.pre('save', function(next) {
+  if (this.content && this.type !== 'file') {
+    this.content = this.content.trim();
+  }
+  if (this.mentions?.length) {
+    this.mentions = [...new Set(this.mentions)];
+  }
+  next();
+});
+
 MessageSchema.pre('remove', async function(next) {
   try {
     if (this.type === 'file' && this.file) {
-      const File = mongoose.model('File');
-      await File.findByIdAndDelete(this.file);
+      await mongoose.model('File').findByIdAndDelete(this.file);
     }
     next();
   } catch (error) {
-    console.error('Message pre-remove error:', {
-      error,
-      messageId: this._id,
-      type: this.type
-    });
     next(error);
   }
 });
 
-// 메시지 저장 전 후크 개선
-MessageSchema.pre('save', function(next) {
-  try {
-    if (this.content && this.type !== 'file') {
-      this.content = this.content.trim();
-    }
-
-    if (this.mentions?.length) {
-      this.mentions = [...new Set(this.mentions)];
-    }
-
-    next();
-  } catch (error) {
-    console.error('Message pre-save error:', {
-      error,
-      messageId: this._id
-    });
-    next(error);
-  }
-});
-
-// JSON 변환 메소드 개선
+// JSON 변환 최적화
 MessageSchema.methods.toJSON = function() {
-  try {
-    const obj = this.toObject();
-    
-    // 불필요한 필드 제거
-    delete obj.__v;
-    delete obj.updatedAt;
-    delete obj.isDeleted;
-    
-    // reactions Map을 일반 객체로 변환
-    if (obj.reactions) {
-      obj.reactions = Object.fromEntries(obj.reactions);
-    }
-
-    return obj;
-  } catch (error) {
-    console.error('Message toJSON error:', {
-      error,
-      messageId: this._id
-    });
-    return {};
+  const obj = this.toObject();
+  
+  delete obj.__v;
+  delete obj.updatedAt;
+  delete obj.isDeleted;
+  
+  if (obj.reactions) {
+    obj.reactions = Object.fromEntries(obj.reactions);
   }
+
+  return obj;
 };
 
+// 개발 환경에서 쿼리 플랜 모니터링
+if (process.env.NODE_ENV === 'development') {
+  MessageSchema.post('find', function(docs, next) {
+    if (this._explain) {
+      console.log('Query Plan:', JSON.stringify(this.explain('executionStats')));
+    }
+    next();
+  });
+}
+
 const Message = mongoose.model('Message', MessageSchema);
+
+// 인덱스 생성 모니터링
+Message.on('index', error => {
+  if (error) {
+    console.error('Message 인덱스 생성 실패:', error);
+  } else {
+    console.log('Message 인덱스 생성 완료');
+  }
+});
+
 module.exports = Message;
