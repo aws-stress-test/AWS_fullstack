@@ -19,14 +19,11 @@ if (cluster.isPrimary) {
 
   cluster.on('exit', (worker, code, signal) => {
     console.log(`[마스터] 워커 ${worker.process.pid} 종료됨`);
-    // 워커 재시작 전에 잠시 대기
     setTimeout(() => cluster.fork(), 1000);
   });
 
   // 단일 포트에서 서버를 실행
   const PORT = process.env.PORT || 5000;
-  const server = http.createServer(app);
-
   server.listen(PORT, '0.0.0.0', () => {
     console.log(`Server running on port ${PORT}`);
   });
