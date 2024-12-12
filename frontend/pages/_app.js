@@ -4,7 +4,6 @@ import authService from "../services/authService";
 import "../styles/globals.css";
 import { Alert } from "@goorm-dev/vapor-components";
 import ToastContainer, { Toast } from "../components/Toast";
-import DuplicateLoginModal from "../components/DuplicateLoginModal";
 
 // 컴포넌트 lazy 로딩
 const Navbar = React.lazy(() => import("../components/Navbar"));
