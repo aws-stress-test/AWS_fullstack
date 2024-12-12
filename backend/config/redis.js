@@ -101,19 +101,15 @@ class RedisManager {
         ['CONFIG', 'SET', 'maxmemory', REDIS_CONFIG.MEMORY_LIMIT],
         ['CONFIG', 'SET', 'appendonly', REDIS_CONFIG.APPEND_ONLY]
       ];
-
-      // await Promise.all(
-      //   commands.map(cmd => this.pubClient.config(...cmd))
-      // );
-
-      for (const cmd of commands) {
-        await this.pubClient.sendCommand(cmd);
+  
+      for (const [command, ...args] of commands) {
+        await this.pubClient.call(command, ...args);
       }
-
-      // logger.info('Redis 메모리 정책 설정 완료', {
-      //   policy: REDIS_CONFIG.MEMORY_POLICY,
-      //   limit: REDIS_CONFIG.MEMORY_LIMIT
-      // });
+  
+      logger.info('Redis 메모리 정책 설정 완료', {
+        policy: REDIS_CONFIG.MEMORY_POLICY,
+        limit: REDIS_CONFIG.MEMORY_LIMIT
+      });
     } catch (error) {
       logger.error('Redis 메모리 정책 설정 실패:', error);
       throw error;
