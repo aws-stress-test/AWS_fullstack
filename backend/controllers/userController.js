@@ -148,7 +148,6 @@ exports.updateProfile = async (req, res) => {
 
     user.name = name.trim();
     await user.save();
-
     res.json({
       success: true,
       message: '프로필이 업데이트되었습니다.',
@@ -179,53 +178,29 @@ exports.uploadProfileImage = async (req, res) => {
       });
     }
 
-    // 파일 유효성 검사
-    const fileSize = req.file.size;
-    const fileType = req.file.mimetype;
-    const maxSize = 5 * 1024 * 1024; // 5MB
-
-    if (fileSize > maxSize) {
-      // 업로드된 파일 삭제
-      await fs.unlink(req.file.path);
-      return res.status(400).json({
-        success: false,
-        message: '파일 크기는 5MB를 초과할 수 없습니다.'
-      });
-    }
-
-    if (!fileType.startsWith('image/')) {
-      // 업로드된 파일 삭제
-      await fs.unlink(req.file.path);
-      return res.status(400).json({
-        success: false,
-        message: '이미지 파일만 업로드할 수 있습니다.'
-      });
-    }
-
     const user = await User.findById(req.user.id);
     if (!user) {
-      // 업로드된 파일 삭제
-      await fs.unlink(req.file.path);
       return res.status(404).json({
         success: false,
         message: '사용자를 찾을 수 없습니다.'
       });
     }
 
-    // 기존 프로필 이미지가 있다면 삭제
+    // 기존 프로필 이미지 삭제 (S3에서 삭제)
     if (user.profileImage) {
-      const oldImagePath = path.join(__dirname, '..', user.profileImage);
+      const oldImageKey = user.profileImage.split('/').slice(-1)[0]; // S3 키 추출
       try {
-        await fs.access(oldImagePath);
-        await fs.unlink(oldImagePath);
+        await s3.deleteObject({
+          Bucket: 'bw-files',
+          Key: `uploads/${oldImageKey}`
+        }).promise();
       } catch (error) {
-        console.error('Old profile image delete error:', error);
+        console.error('Failed to delete old profile image from S3:', error);
       }
     }
 
-    // 새 이미지 경로 저장
-    const imageUrl = `/uploads/${req.file.filename}`;
-    user.profileImage = imageUrl;
+    // 새 이미지 URL 저장
+    user.profileImage = req.file.location; // S3 파일 URL
     await user.save();
 
     res.json({
@@ -233,23 +208,17 @@ exports.uploadProfileImage = async (req, res) => {
       message: '프로필 이미지가 업데이트되었습니다.',
       imageUrl: user.profileImage
     });
+    console.log("이미지 s3 저장 성공");
 
   } catch (error) {
     console.error('Profile image upload error:', error);
-    // 업로드 실패 시 파일 삭제
-    if (req.file) {
-      try {
-        await fs.unlink(req.file.path);
-      } catch (unlinkError) {
-        console.error('File delete error:', unlinkError);
-      }
-    }
     res.status(500).json({
       success: false,
       message: '이미지 업로드 중 오류가 발생했습니다.'
     });
   }
 };
+
 
 // 프로필 이미지 삭제
 exports.deleteProfileImage = async (req, res) => {
