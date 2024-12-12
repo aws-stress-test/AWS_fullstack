@@ -16,25 +16,21 @@ const REDIS_CONFIG = {
 };
 
 const sentinelConfig = {
-  sentinels: [
-    { host: process.env.SENTINEL_HOST_1 || 'sentinel-1', port: 26379 },
-    { host: process.env.SENTINEL_HOST_2 || 'sentinel-2', port: 26379 },
-    { host: process.env.SENTINEL_HOST_3 || 'sentinel-3', port: 26379 }
-  ],
-  name: 'mymaster',
-  ...(process.env.REDIS_PASSWORD ? { password: process.env.REDIS_PASSWORD } : {}),
-  
-  connectTimeout: REDIS_CONFIG.CONNECT_TIMEOUT,
-  commandTimeout: REDIS_CONFIG.COMMAND_TIMEOUT,
-  maxRetriesPerRequest: REDIS_CONFIG.MAX_RETRIES,
-  enableReadyCheck: false,
-  enableAutoPipelining: true,
-  autoResubscribe: false,
-  
-  retryStrategy: (times) => {
-    if (times > REDIS_CONFIG.MAX_RETRIES) return null;
-    return Math.min(times * REDIS_CONFIG.RETRY_INTERVAL, REDIS_CONFIG.MAX_RETRY_TIME);
-  }
+    sentinels: [
+      { host: process.env.SENTINEL_HOST_1 || '127.0.0.1', port: 26379 },
+      { host: process.env.SENTINEL_HOST_2 || '127.0.0.2', port: 26379 }
+    ],
+    name: 'mymaster',
+    connectTimeout: REDIS_CONFIG.CONNECT_TIMEOUT,
+    commandTimeout: REDIS_CONFIG.COMMAND_TIMEOUT,
+    maxRetriesPerRequest: REDIS_CONFIG.MAX_RETRIES,
+    enableReadyCheck: false,
+    enableAutoPipelining: true,
+    autoResubscribe: false,
+    retryStrategy: (times) => {
+      if (times > REDIS_CONFIG.MAX_RETRIES) return null;
+      return Math.min(times * REDIS_CONFIG.RETRY_INTERVAL, REDIS_CONFIG.MAX_RETRY_TIME);
+    }
 };
 
 class RedisManager {
