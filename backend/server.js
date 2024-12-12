@@ -1,9 +1,9 @@
 require('dotenv').config();
+const mongoose = require('mongoose');
 const cluster = require('cluster');
 const os = require('os');
 const express = require('express');
 const cors = require('cors');
-const mongoose = require('mongoose');
 const http = require('http');
 const socketIO = require('socket.io');
 const { createAdapter } = require('@socket.io/redis-adapter');
@@ -12,6 +12,9 @@ const { router: roomsRouter, initializeSocket } = require('./routes/api/rooms');
 const routes = require('./routes');
 const redisManager = require('./config/redis');
 const RateLimit = require('express-rate-limit');
+
+let app;
+let server;
 
 (async () => {
   if (cluster.isPrimary) {
@@ -90,7 +93,7 @@ const RateLimit = require('express-rate-limit');
     // API 라우트 마운트
     app.use('/api', routes);
   
-    redisManager.connect();
+    await redisManager.connect();
   
     // Socket.IO 설정 최적화
     const io = socketIO(server, {
@@ -191,8 +194,10 @@ const RateLimit = require('express-rate-limit');
       });
     });
   
+    console.log('MONGO_URI:', process.env.MONGO_URI);
+
     // 서버 시작
-    mongoose.connect(process.env.MONGO_URI)
+    mongoose.connect(process.env.MONGO_URI || 'mongodb://localhost:27017/bootcampchat')
       .then(() => {
         console.log('MongoDB Connected');
         server.listen(PORT, '0.0.0.0', () => {
