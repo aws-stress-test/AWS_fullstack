@@ -107,6 +107,16 @@ class ChatService {
         await this.getFileFromCache(message.file);
       }
 
+      this.messageBuffer.push(message);
+      if (this.messageBuffer.length >= this.BATCH_SIZE) {
+        await this.flushMessageBuffer();
+      }
+
+      const job = await messageQueue.add({
+        ...message,
+        userId: userId
+      });
+
       const roomKey = `chat:room:${message.room}:messages`;
       const messageCacheKey = `chat:message:${message.room}:${message.timestamp}`;
       
@@ -119,20 +129,8 @@ class ChatService {
       pipeline.expire(roomKey, this.CACHE_TTL);
       
       await pipeline.exec();
-
-      this.messageBuffer.push(message);
-      if (this.messageBuffer.length >= this.BATCH_SIZE) {
-        await this.flushMessageBuffer();
-      }
-
-      const job = await messageQueue.add({
-        room: roomId,
-        content: messageContent,
-        userId: sender,
-        timestamp: Date.now(),
-        type: 'text'
-      });
-
+      
+      console.log("Message job added:", job);
       return { 
         success: true, 
         tempId: job.id, 
