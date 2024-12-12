@@ -2,6 +2,19 @@ const Redis = require('ioredis');
 const Queue = require('bull');
 const logger = require('../utils/logger');
 
+// Redis 설정 상수
+const REDIS_CONFIG = {
+  MEMORY_LIMIT: '2gb',
+  MEMORY_POLICY: 'volatile-lru',
+  APPEND_ONLY: 'no',
+  DEFAULT_TTL: 3600,
+  CONNECT_TIMEOUT: 15000,
+  COMMAND_TIMEOUT: 8000,
+  MAX_RETRIES: 3,
+  RETRY_INTERVAL: 200,
+  MAX_RETRY_TIME: 1000
+};
+
 const sentinelConfig = {
   sentinels: [
     { host: process.env.SENTINEL_HOST_1 || 'sentinel-1', port: 26379 },
@@ -11,16 +24,16 @@ const sentinelConfig = {
   name: 'mymaster',
   ...(process.env.REDIS_PASSWORD ? { password: process.env.REDIS_PASSWORD } : {}),
   
-  connectTimeout: 15000,
-  commandTimeout: 8000,
-  maxRetriesPerRequest: 3,
+  connectTimeout: REDIS_CONFIG.CONNECT_TIMEOUT,
+  commandTimeout: REDIS_CONFIG.COMMAND_TIMEOUT,
+  maxRetriesPerRequest: REDIS_CONFIG.MAX_RETRIES,
   enableReadyCheck: false,
   enableAutoPipelining: true,
   autoResubscribe: false,
   
   retryStrategy: (times) => {
-    if (times > 3) return null;
-    return Math.min(times * 200, 1000);
+    if (times > REDIS_CONFIG.MAX_RETRIES) return null;
+    return Math.min(times * REDIS_CONFIG.RETRY_INTERVAL, REDIS_CONFIG.MAX_RETRY_TIME);
   }
 };
 
@@ -31,6 +44,7 @@ class RedisManager {
     this.queues = new Map();
     this.messageBuffer = [];
     this.BATCH_SIZE = 200;
+    this.defaultTTL = REDIS_CONFIG.DEFAULT_TTL;
   }
 
   async connect() {
@@ -69,11 +83,23 @@ class RedisManager {
 
   async setMemoryPolicy() {
     try {
-      await this.pubClient.config('SET', 'maxmemory-policy', 'volatile-lru');
-      await this.pubClient.config('SET', 'maxmemory', '2gb');
-      await this.pubClient.config('SET', 'appendonly', 'no');
+      const commands = [
+        ['CONFIG', 'SET', 'maxmemory-policy', REDIS_CONFIG.MEMORY_POLICY],
+        ['CONFIG', 'SET', 'maxmemory', REDIS_CONFIG.MEMORY_LIMIT],
+        ['CONFIG', 'SET', 'appendonly', REDIS_CONFIG.APPEND_ONLY]
+      ];
+
+      await Promise.all(
+        commands.map(cmd => this.pubClient.config(...cmd))
+      );
+
+      // logger.info('Redis 메모리 정책 설정 완료', {
+      //   policy: REDIS_CONFIG.MEMORY_POLICY,
+      //   limit: REDIS_CONFIG.MEMORY_LIMIT
+      // });
     } catch (error) {
       logger.error('Redis 메모리 정책 설정 실패:', error);
+      throw error;
     }
   }
 
@@ -143,11 +169,13 @@ class RedisManager {
     }
   }
 
-  async setCache(key, value, ttl = 30) {
+  async setCache(key, value, ttl = this.defaultTTL) {
     try {
-      await this.pubClient.set(key, value, 'EX', ttl);
+      const stringValue = typeof value === 'object' ? JSON.stringify(value) : String(value);
+      await this.pubClient.setex(key, ttl, stringValue);
     } catch (error) {
       logger.error('Redis cache set 실패:', error);
+      throw error;
     }
   }
 
