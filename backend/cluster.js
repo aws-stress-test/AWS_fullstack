@@ -1,5 +1,7 @@
 const cluster = require('cluster');
 const os = require('os');
+const http = require('http');
+const { app } = require('./server');
 
 cluster.schedulingPolicy = cluster.SCHED_RR; // Round-Robin 스케줄링
 
@@ -14,6 +16,26 @@ if (cluster.isPrimary) {
       NODE_OPTIONS: `--max-old-space-size=${workerHeapSize}`
     });
   }
+
+  cluster.on('exit', (worker, code, signal) => {
+    console.log(`[마스터] 워커 ${worker.process.pid} 종료됨`);
+    // 워커 재시작 전에 잠시 대기
+    setTimeout(() => cluster.fork(), 1000);
+  });
+
+  // 단일 포트에서 서버를 실행
+  const PORT = process.env.PORT || 5000;
+  const server = http.createServer(app);
+
+  server.listen(PORT, '0.0.0.0', () => {
+    console.log(`Server running on port ${PORT}`);
+  });
+
+  // 예외 처리
+  process.on('uncaughtException', (err) => {
+    console.error('예기치 않은 에러:', err);
+    process.exit(1);
+  });
 
   // 워커 상태 모니터링
   setInterval(() => {
@@ -38,19 +60,6 @@ if (cluster.isPrimary) {
     }
   }, 30000);
 
-  cluster.on('exit', (worker, code, signal) => {
-    console.log(`[마스터] 워커 ${worker.process.pid} 종료됨`);
-    // 워커 재시작 전에 잠시 대기
-    setTimeout(() => cluster.fork(), 1000);
-  });
-
-  // 예외 처리
-  process.on('uncaughtException', (err) => {
-    console.error('예기치 않은 에러:', err);
-    process.exit(1);
-  });
-
 } else {
-  // 여기서 서버를 초기화
-  require('./server'); // server.js에서 app, server를 초기화하고 module.exports 처리
+  require('./server');
 }
