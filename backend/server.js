@@ -23,7 +23,9 @@ const corsOptions = {
     'https://localhost:3000',
     'http://0.0.0.0:3000',
     'https://0.0.0.0:3000',
-    'https://goorm-ktb-018.goorm.team'
+    'https://goorm-ktb-018.goorm.team',
+    'http://goorm-ktb-018.goorm.team',
+    'http://10.0.5.112'   
   ],
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
