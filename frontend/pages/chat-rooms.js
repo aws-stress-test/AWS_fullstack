@@ -400,36 +400,46 @@ function ChatRoomsComponent() {
     }
   }, [pageIndex, fetchRooms]);
 
+  // 초기 로드
   useEffect(() => {
     if (!currentUser) return;
-
+  
+    let isFirstLoad = true;  // 초기 로드 체크용 플래그
+  
     const initFetch = async () => {
       try {
         await fetchRooms(false);
+        setConnectionStatus(CONNECTION_STATUS.CONNECTED);
       } catch (error) {
         console.error("Initial fetch failed:", error);
-        setTimeout(() => {
-          if (connectionStatus === CONNECTION_STATUS.CHECKING) {
+        setConnectionStatus(CONNECTION_STATUS.ERROR);
+        
+        // 초기 로드 실패 시에만 한 번 재시도
+        if (isFirstLoad) {
+          isFirstLoad = false;
+          setTimeout(() => {
             fetchRooms(false);
-          }
-        }, 3000);
+          }, 3000);
+        }
       }
     };
-
+  
+    // 최초 로드 시 한 번만 실행
     initFetch();
-
+  
+    // 연결 상태 모니터링 (연결이 끊어졌을 때만)
     connectionCheckTimerRef.current = setInterval(() => {
-      if (connectionStatus === CONNECTION_STATUS.CHECKING) {
+      if (connectionStatus === CONNECTION_STATUS.DISCONNECTED) {
         attemptConnection();
       }
-    }, 5000);
-
+    }, 10000);  
+  
     return () => {
       if (connectionCheckTimerRef.current) {
         clearInterval(connectionCheckTimerRef.current);
       }
     };
-  }, [currentUser, connectionStatus, attemptConnection, fetchRooms]);
+  }, [currentUser]); 
 
   useEffect(() => {
     const handleOnline = () => {
