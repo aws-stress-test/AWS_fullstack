@@ -38,17 +38,8 @@ export const useChatRoom = () => {
   const setupCompleteRef = useRef(false);
   const socketInitializedRef = useRef(false);
   const cleanupInProgressRef = useRef(false);
-  const cleanupCountRef = useRef(0);
   const userRooms = useRef(new Map());
-  const previousMessagesRef = useRef(new Set());
-  const messageProcessingRef = useRef(false);
-  const initialLoadCompletedRef = useRef(false);
-  const scrollPositionRef = useRef(0);
   const processedMessageIds = useRef(new Set());
-  const loadMoreTimeoutRef = useRef(null);
-  const previousScrollHeightRef = useRef(0);
-  const isLoadingRef = useRef(false);
-  const loadMoreTriggeredRef = useRef(false);
 
   // Socket handling setup
   const {
@@ -113,105 +104,6 @@ export const useChatRoom = () => {
     removeFilePreview,
   } = useMessageHandling(socketRef, currentUser, router);
 
-  // Cleanup 함수 수정
-  const cleanup = useCallback(
-    (reason = "MANUAL") => {
-      if (!mountedRef.current || !router.query.room) return;
-
-      try {
-        // cleanup이 이미 진행 중인지 확인
-        if (cleanupInProgressRef.current) {
-          console.log("[Chat] Cleanup already in progress, skipping...");
-          return;
-        }
-
-        cleanupInProgressRef.current = true;
-        console.log(`[Chat] Starting cleanup (reason: ${reason})`);
-
-        // Socket cleanup
-        if (
-          reason !== "UNMOUNT" &&
-          router.query.room &&
-          socketRef.current?.connected
-        ) {
-          console.log("[Chat] Emitting leaveRoom event");
-          socketRef.current.emit("leaveRoom", router.query.room);
-        }
-
-        if (socketRef.current && reason !== "RECONNECT") {
-          console.log("[Chat] Cleaning up socket listeners...");
-          socketRef.current.off("message");
-          socketRef.current.off("previousMessages");
-          socketRef.current.off("previousMessagesLoaded");
-          socketRef.current.off("aiMessageStart");
-          socketRef.current.off("aiMessageChunk");
-          socketRef.current.off("aiMessageComplete");
-          socketRef.current.off("aiMessageError");
-          socketRef.current.off("messageReactionUpdate");
-          socketRef.current.off("session_ended");
-          socketRef.current.off("error");
-        }
-
-        // Clear timeouts
-        if (loadMoreTimeoutRef.current) {
-          clearTimeout(loadMoreTimeoutRef.current);
-          loadMoreTimeoutRef.current = null;
-        }
-
-        // Reset refs
-        processedMessageIds.current.clear();
-        previousMessagesRef.current.clear();
-        messageProcessingRef.current = false;
-
-        // Reset states only if needed
-        if (reason === "MANUAL" && mountedRef.current) {
-          setStreamingMessages({});
-          setError(null);
-          setLoading(false);
-          setLoadingMessages(false);
-          setMessages([]);
-
-          if (userRooms.current.size > 0) {
-            userRooms.current.clear();
-          }
-        } else if (reason === "DISCONNECT" && mountedRef.current) {
-          setError("채팅 연결이 끊어졌습니다. 재연결을 시도합니다.");
-        }
-
-        console.log(`[Chat] Cleanup completed (reason: ${reason})`);
-      } catch (error) {
-        console.error("[Chat] Cleanup error:", error);
-        if (mountedRef.current) {
-          setError("채팅방 정리 중 오류가 발생했습니다.");
-        }
-      } finally {
-        cleanupInProgressRef.current = false;
-      }
-    },
-    [
-      setMessages,
-      setStreamingMessages,
-      setError,
-      setLoading,
-      setLoadingMessages,
-      mountedRef,
-      socketRef,
-      router.query.room,
-    ]
-  );
-
-  // Connection state utility
-  const getConnectionState = useCallback(() => {
-    if (!socketRef.current) return "disconnected";
-    if (loading) return "connecting";
-    if (error) return "error";
-    return socketRef.current.connected ? "connected" : "disconnected";
-  }, [loading, error, socketRef]);
-
-  // Reaction handling hook
-  const { handleReactionAdd, handleReactionRemove, handleReactionUpdate } =
-    useReactionHandling(socketRef, currentUser, messages, setMessages);
-
   // 메시지 처리 유틸리티 함수
   const processMessages = useCallback(
     (loadedMessages, hasMore, isInitialLoad = false) => {
@@ -220,38 +112,22 @@ export const useChatRoom = () => {
           throw new Error("Invalid messages format");
         }
 
-        // 중복 제거 및 유효성 검사
-        const newMessages = loadedMessages.filter((msg) => {
-          if (!msg._id || !msg.content || !msg.timestamp) return false;
-          if (processedMessageIds.current.has(msg._id)) return false;
-          processedMessageIds.current.add(msg._id);
-          return true;
-        });
-
         setMessages((prev) => {
-          // 중복 메시지 필터링 개선
-          const newMessages = loadedMessages.filter((msg) => {
-            if (!msg._id) return false;
-            if (processedMessageIds.current.has(msg._id)) return false;
-            processedMessageIds.current.add(msg._id);
-            return true;
+          // 중복 필터링 및 정렬
+          const messageMap = new Map([...prev.map(msg => [msg._id, msg])]);
+          loadedMessages.forEach(msg => {
+            if (msg._id && !messageMap.has(msg._id)) {
+              messageMap.set(msg._id, msg);
+            }
           });
-
-          // 기존 메시지와 새 메시지 결합 및 정렬
-          const allMessages = [...prev, ...newMessages].sort((a, b) => {
-            return new Date(a.timestamp || 0) - new Date(b.timestamp || 0);
-          });
-
-          // 중복 제거 (가장 최근 메시지 유지)
-          const messageMap = new Map();
-          allMessages.forEach((msg) => messageMap.set(msg._id, msg));
-          return Array.from(messageMap.values());
+          
+          return Array.from(messageMap.values()).sort((a, b) => 
+            new Date(a.timestamp) - new Date(b.timestamp)
+          );
         });
 
-        // 메시지 로드 상태 업데이트
         if (isInitialLoad) {
           setHasMoreMessages(hasMore);
-          initialLoadCompletedRef.current = true;
           if (isNearBottom) {
             requestAnimationFrame(() => scrollToBottom("auto"));
           }
@@ -266,134 +142,32 @@ export const useChatRoom = () => {
     [setMessages, setHasMoreMessages, isNearBottom, scrollToBottom]
   );
 
-  // 이전 메시지 로드 함수
-  const loadPreviousMessages = useCallback(async () => {
-    if (!socketRef.current?.connected || loadingMessages) {
-      console.warn(
-        "Cannot load messages: Socket not connected or already loading"
-      );
-      return;
-    }
-
-    try {
-      setLoadingMessages(true);
-      const firstMessageTimestamp = messages[0]?.timestamp;
-
-      if (loadMoreTimeoutRef.current) {
-        clearTimeout(loadMoreTimeoutRef.current);
-      }
-
-      const responsePromise = new Promise((resolve, reject) => {
-        socketRef.current.emit("fetchPreviousMessages", {
-          roomId: router?.query?.room,
-          before: firstMessageTimestamp,
-        });
-
-        socketRef.current.once("previousMessagesLoaded", resolve);
-        socketRef.current.once("error", reject);
-      });
-
-      const timeoutPromise = new Promise((_, reject) => {
-        loadMoreTimeoutRef.current = setTimeout(() => {
-          reject(new Error("Message loading timed out"));
-        }, 10000);
-      });
-
-      const response = await Promise.race([responsePromise, timeoutPromise]);
-
-      if (response.messages) {
-        processMessages(response.messages, response.hasMore, false);
-      }
-    } catch (error) {
-      console.error("Load previous messages error:", error);
-      Toast.error("이전 메시지를 불러오는데 실패했습니다.");
-      setHasMoreMessages(false);
-    } finally {
-      setLoadingMessages(false);
-      if (loadMoreTimeoutRef.current) {
-        clearTimeout(loadMoreTimeoutRef.current);
-      }
-    }
-  }, [
-    socketRef,
-    router?.query?.room,
-    loadingMessages,
-    messages,
-    processMessages,
-    setHasMoreMessages,
-  ]);
-
   // Event listeners setup
   const setupEventListeners = useCallback(() => {
     if (!socketRef.current || !mountedRef.current) return;
 
     console.log("Setting up event listeners...");
 
-    // 메시지 이벤트
-    socketRef.current.on("message", (message) => {
-      if (
-        !message ||
-        !mountedRef.current ||
-        messageProcessingRef.current ||
-        !message._id
-      )
-        return;
+    // 메시지 이벤트 리스너
+    const handleNewMessage = (message) => {
+      if (!message || !mountedRef.current || !message._id) return;
 
-      if (processedMessageIds.current.has(message._id)) {
-        return;
-      }
-
-      console.log("Received message:", message);
-      processedMessageIds.current.add(message._id);
-
-      setMessages((prev) => {
-        if (prev.some((msg) => msg._id === message._id)) {
-          return prev;
-        }
+      setMessages(prev => {
+        // 이미 존재하는 메시지인지 확인
+        if (prev.some(msg => msg._id === message._id)) return prev;
         return [...prev, message];
       });
 
       if (isNearBottom) {
         scrollToBottom();
       }
-    });
+    };
 
-    // messageCreated 이벤트 리스너
-    socketRef.current.on("messageCreated", (newMessage) => {
-      if (
-        !newMessage ||
-        !mountedRef.current ||
-        messageProcessingRef.current ||
-        !newMessage._id
-      )
-        return;
-      if (processedMessageIds.current.has(newMessage._id)) {
-        return;
-      }
-
-      console.log("Received messageCreated:", newMessage);
-      processedMessageIds.current.add(newMessage._id);
-
-      setMessages((prev) => {
-        if (prev.some((msg) => msg._id === newMessage._id)) {
-          return prev;
-        }
-        return [...prev, newMessage];
-      });
-
-      if (isNearBottom) {
-        scrollToBottom();
-      }
-    });
-
-    // 이전 메시지 이벤트
-    socketRef.current.on("previousMessages", (response) => {
-      if (!mountedRef.current || messageProcessingRef.current) return;
+    // 이전 메시지 이벤트 리스너
+    const handlePreviousMessages = (response) => {
+      if (!mountedRef.current) return;
 
       try {
-        messageProcessingRef.current = true;
-        console.log("Previous messages response:", response);
-
         if (!response || typeof response !== "object") {
           throw new Error("Invalid response format");
         }
@@ -408,11 +182,14 @@ export const useChatRoom = () => {
         setLoadingMessages(false);
         setError("메시지 처리 중 오류가 발생했습니다.");
         setHasMoreMessages(false);
-      } finally {
-        messageProcessingRef.current = false;
       }
-    });
+    };
 
+    // 이벤트 리스너 등록
+    socketRef.current.on("message", handleNewMessage);
+    socketRef.current.on("previousMessages", handlePreviousMessages);
+    
+    // AI 메시지 리스너 설정
     setupAIMessageListeners();
 
     // 리액션 이벤트
@@ -421,7 +198,7 @@ export const useChatRoom = () => {
       handleReactionUpdate(data);
     });
 
-    // 세션 이벤트
+    // 세션 관련 이벤트
     socketRef.current.on("session_ended", () => {
       if (!mountedRef.current) return;
       cleanup();
@@ -434,6 +211,17 @@ export const useChatRoom = () => {
       console.error("Socket error:", error);
       setError(error.message || "채팅 연결에 문제가 발생했습니다.");
     });
+
+    // cleanup 함수 반환
+    return () => {
+      if (socketRef.current) {
+        socketRef.current.off("message", handleNewMessage);
+        socketRef.current.off("previousMessages", handlePreviousMessages);
+        socketRef.current.off("messageReactionUpdate");
+        socketRef.current.off("session_ended");
+        socketRef.current.off("error");
+      }
+    };
   }, [
     isNearBottom,
     scrollToBottom,
@@ -448,35 +236,6 @@ export const useChatRoom = () => {
     setError,
   ]);
 
-  // Room handling hook initialization
-  const {
-    setupRoom,
-    joinRoom,
-    loadInitialMessages,
-    fetchRoomData,
-    handleSessionError,
-  } = useRoomHandling(
-    socketRef,
-    currentUser,
-    mountedRef,
-    router,
-    setRoom,
-    setError,
-    setMessages,
-    setHasMoreMessages,
-    setLoadingMessages,
-    setLoading,
-    setupEventListeners,
-    cleanup,
-    loading,
-    setIsInitialized,
-    initializingRef,
-    setupCompleteRef,
-    userRooms.current,
-    processMessages
-  );
-
-  // Socket connection monitoring
   // Socket connection monitoring
   useEffect(() => {
     if (!socketRef.current || !currentUser) return;
@@ -487,48 +246,7 @@ export const useChatRoom = () => {
       setConnectionStatus("connected");
       setConnected(true);
 
-      // 이전 메시지 이벤트 리스너
-      socketRef.current.on("previousMessages", (response) => {
-        console.log("Previous messages received:", response);
-        try {
-          if (!response || typeof response !== "object") {
-            throw new Error("Invalid response format");
-          }
-
-          const { messages: loadedMessages = [], hasMore } = response;
-          const isInitialLoad = messages.length === 0;
-
-          processMessages(loadedMessages, hasMore, isInitialLoad);
-        } catch (error) {
-          console.error("Error processing previous messages:", error);
-          setError("메시지 로드 중 문제가 발생했습니다.");
-        }
-      });
-
-      // 새 메시지 이벤트 리스너
-      socketRef.current.on("message", (newMessage) => {
-        console.log("New message received:", newMessage);
-        if (!newMessage || !newMessage._id) return;
-
-        setMessages((prevMessages) => {
-          if (prevMessages.some((msg) => msg._id === newMessage._id)) {
-            return prevMessages; // 중복 메시지 제거
-          }
-          return [...prevMessages, newMessage];
-        });
-
-        if (isNearBottom) {
-          scrollToBottom(); // 하단으로 스크롤
-        }
-      });
-
-      // 초기 방 설정
-      if (
-        router.query.room &&
-        !setupCompleteRef.current &&
-        !initializingRef.current &&
-        !isInitialized
-      ) {
+      if (router.query.room && !setupCompleteRef.current && !initializingRef.current && !isInitialized) {
         socketInitializedRef.current = true;
         setupRoom().catch((error) => {
           console.error("Setup room error:", error);
@@ -538,176 +256,57 @@ export const useChatRoom = () => {
     };
 
     const handleDisconnect = () => {
+      if (!mountedRef.current) return;
       console.log("Socket disconnected");
       setConnectionStatus("disconnected");
       setConnected(false);
     };
 
+    // 연결 관련 이벤트만 처리
     socketRef.current.on("connect", handleConnect);
     socketRef.current.on("disconnect", handleDisconnect);
 
+    // 초기 상태 설정
+    setConnectionStatus(socketRef.current.connected ? "connected" : "disconnected");
+
     return () => {
-      if (socketRef.current) {
-        socketRef.current.off("connect", handleConnect);
-        socketRef.current.off("disconnect", handleDisconnect);
-        socketRef.current.off("message");
-        socketRef.current.off("previousMessages");
-      }
+      socketRef.current.off("connect", handleConnect);
+      socketRef.current.off("disconnect", handleDisconnect);
     };
   }, [
     currentUser,
     router.query.room,
     setupRoom,
     setConnected,
-    setConnectionStatus,
-    processMessages,
+    isInitialized,
     setError,
   ]);
 
-  // Component initialization and cleanup
-  useEffect(() => {
-    const initializeChat = async () => {
-      if (initializingRef.current) return;
-
-      const user = authService.getCurrentUser();
-      if (!user) {
-        router.replace("/?redirect=" + router.asPath);
-        return;
-      }
-
-      if (!currentUser) {
-        setCurrentUser(user);
-      }
-
-      // 채팅방이 있을 때만 초기화 진행
-      if (!isInitialized && router.query.room) {
-        try {
-          initializingRef.current = true;
-          console.log("Initializing chat room...");
-          await setupRoom();
-        } catch (error) {
-          console.error("Chat initialization error:", error);
-          setError("채팅방 초기화에 실패했습니다.");
-        } finally {
-          initializingRef.current = false;
-        }
-      }
-    };
-
-    mountedRef.current = true;
-
-    // 라우터 쿼리가 준비되면 초기화 진행
-    if (router.query.room) {
-      initializeChat();
-    }
-
-    const tokenCheckInterval = setInterval(() => {
-      if (!mountedRef.current) return;
-
-      const user = authService.getCurrentUser();
-      if (!user) {
-        clearInterval(tokenCheckInterval);
-        router.replace("/?redirect=" + router.asPath);
-      }
-    }, 60000);
-
-    return () => {
-      console.log("[Chat] Component unmounting...");
-      mountedRef.current = false;
-      clearInterval(tokenCheckInterval);
-
-      if (loadMoreTimeoutRef.current) {
-        clearTimeout(loadMoreTimeoutRef.current);
-      }
-
-      // Run cleanup only if socket is connected and room exists
-      if (
-        socketRef.current?.connected &&
-        router.query.room &&
-        !cleanupInProgressRef.current
-      ) {
-        cleanup(CLEANUP_REASONS.UNMOUNT);
-      }
-    };
-  }, [router, cleanup, setupRoom, currentUser, isInitialized, setError]);
-
-  // File handling hook
-  const {
-    fileInputRef,
-    uploading: fileUploading,
-    uploadProgress: fileUploadProgress,
-    uploadError: fileUploadError,
-    handleFileUpload,
-    handleFileSelect,
-    handleFileDrop,
-    removeFilePreview: removeFile,
-  } = useFileHandling(socketRef, currentUser, router);
-
-  // Enter key handler
-  const handleKeyDown = useCallback(
-    (e) => {
-      if (e.key === "Enter" && !e.shiftKey) {
-        e.preventDefault();
-        handleMessageSubmit(e);
-      }
-    },
-    [handleMessageSubmit]
-  );
-
-  // 메시지 필터링 로직 메모이제이션
-  const filteredMessages = useMemo(() => {
-    return messages.filter((msg) => !processedMessageIds.current.has(msg._id));
-  }, [messages]);
-
-  // 연결 상태 관련 값들 메모이제이션
-  const connectionInfo = useMemo(
-    () => ({
-      status: getConnectionState(),
-      error: error,
-      loading: loading,
-      connected: connected,
-    }),
-    [getConnectionState, error, loading, connected]
-  );
-
-  // 메시지 입력 관련 상태 메모이제이션
-  const messageInputState = useMemo(
-    () => ({
-      message,
-      showEmojiPicker,
-      showMentionList,
-      mentionFilter,
-      mentionIndex,
-      filePreview,
-      uploading,
-      uploadProgress,
-      uploadError,
-    }),
-    [
-      message,
-      showEmojiPicker,
-      showMentionList,
-      mentionFilter,
-      mentionIndex,
-      filePreview,
-      uploading,
-      uploadProgress,
-      uploadError,
-    ]
-  );
+  // Rest of the component code...
 
   return {
-    // State
     room,
-    messages: filteredMessages,
+    messages,
     streamingMessages,
-    ...connectionInfo,
+    connected,
     currentUser,
-    ...messageInputState,
+    message,
+    showEmojiPicker,
+    showMentionList,
+    mentionFilter,
+    mentionIndex,
+    filePreview,
+    uploading,
+    uploadProgress,
+    uploadError,
     isNearBottom,
     hasMoreMessages,
     loadingMessages,
-
+    error,
+    loading,
+    connectionStatus,
+    messageLoadError,
+    
     // Refs
     fileInputRef,
     messageInputRef,
@@ -718,9 +317,14 @@ export const useChatRoom = () => {
     handleMessageChange,
     handleMessageSubmit,
     handleEmojiToggle,
-    handleKeyDown,
+    handleKeyDown: (e) => {
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        handleMessageSubmit({ content: message, type: "text" });
+      }
+    },
     handleScroll,
-    handleLoadMore: loadPreviousMessages,
+    handleLoadMore,
     handleConnectionError,
     handleReconnect,
     getFilteredParticipants,
@@ -740,17 +344,11 @@ export const useChatRoom = () => {
     setStreamingMessages,
     setError,
 
-    // Status
-    connectionStatus: getConnectionState(),
-    messageLoadError,
-
     // Retry handler
     retryMessageLoad: useCallback(() => {
       if (mountedRef.current) {
         messageLoadAttemptRef.current = 0;
-        previousMessagesRef.current.clear();
         processedMessageIds.current.clear();
-        initialLoadCompletedRef.current = false;
         loadInitialMessages(router.query.room);
       }
     }, [loadInitialMessages, router.query.room]),
