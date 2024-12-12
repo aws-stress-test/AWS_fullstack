@@ -10,7 +10,7 @@ let io;
 // 속도 제한 설정
 const limiter = rateLimit({
   windowMs: 1 * 60 * 1000, // 1분
-  max: 60, // IP당 최대 요청 수
+  max: 300, // IP당 최대 요청 수
   message: {
     success: false,
     error: {
@@ -19,7 +19,10 @@ const limiter = rateLimit({
     }
   },
   standardHeaders: true,
-  legacyHeaders: false
+  legacyHeaders: false,
+  keyGenerator: (req) => {
+    return req.user ? `${req.ip}-${req.user.id}` : req.ip;
+  }
 });
 
 // Socket.IO 초기화 함수
@@ -165,7 +168,7 @@ router.get('/', [limiter, auth], async (req, res) => {
     };
 
     // 결과 캐싱 (30초)
-    await redisManager.setCache(cacheKey, JSON.stringify(response), 30);
+    await redisManager.setCache(cacheKey, JSON.stringify(response), 60);
 
     res.json(response);
 
@@ -236,7 +239,7 @@ router.post('/', auth, async (req, res) => {
 });
 
 // 특정 채팅방 조회
-router.get('/:roomId', auth, async (req, res) => {
+router.get('/:roomId', [limiter, auth], async (req, res) => {
   try {
     const room = await Room.findById(req.params.roomId)
       .populate('creator', 'name email')
@@ -266,7 +269,7 @@ router.get('/:roomId', auth, async (req, res) => {
 });
 
 // 채팅방 입장
-router.post('/:roomId/join', auth, async (req, res) => {
+router.post('/:roomId/join', [limiter, auth], async (req, res) => {
   try {
     const { password } = req.body;
     const room = await Room.findById(req.params.roomId).select('+password');
