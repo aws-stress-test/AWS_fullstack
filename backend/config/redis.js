@@ -19,7 +19,7 @@ const sentinelConfig = {
     sentinels: [
       // { host: process.env.SENTINEL_HOST_1 || '52.78.152.29', port: 26379 },
       // { host: process.env.SENTINEL_HOST_2 || '43.201.72.113', port: 26379 }
-      // { host: '43.202.179.98', port: 26379 },
+      { host: '43.202.179.98', port: 26379 },
       { host: '52.78.152.29', port: 26379 },
       { host: '43.201.72.113', port: 26379 }
     ],
