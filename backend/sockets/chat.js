@@ -159,11 +159,13 @@ module.exports = function(io) {
         if (!socket.user) throw new Error('Unauthorized');
         const room = await Room.findOne({ _id: roomId, participants: socket.user.id });
         if (!room) throw new Error('채팅방 접근 권한이 없습니다.');
-
+    
         socket.emit('messageLoadStart');
         const result = await loadMessagesWithRetry(socket, roomId, before);
+        
+        // 'previousMessagesLoaded' 이벤트로 응답
         socket.emit('previousMessagesLoaded', result);
-
+    
       } catch (error) {
         console.error('Fetch previous messages error:', error);
         socket.emit('error', {
@@ -285,14 +287,28 @@ module.exports = function(io) {
           room,
           type,
           content: processedContent,
-          ...(fileData?._id && { fileData: fileData._id })
+          ...(fileData?._id && { fileData: fileData._id }),
+          sender: {
+            _id: socket.user.id,
+            name: socket.user.name,
+            email: socket.user.email,
+            profileImage: socket.user.profileImage
+          },
+          timestamp: Date.now()
         };
 
         const result = await ChatService.handleMessage(msgData, socket.user.id);
-        // 메시지를 보냈다는 클라이언트 응답(임시 ID 매핑)
+        // 발신자에게 임시 ID 매핑 정보 전송
         socket.emit('messageSent', {
           success: true,
           tempId: result.tempId,
+          timestamp: result.timestamp
+        });
+
+        // 채팅방의 모든 참가자에게 message 이벤트로 브로드캐스트
+        io.to(room).emit('message', {
+          _id: result.tempId,
+          ...msgData,
           timestamp: result.timestamp
         });
 
