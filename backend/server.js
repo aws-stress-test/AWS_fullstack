@@ -91,36 +91,49 @@ if (cluster.isPrimary) {
   // Socket.IO 설정 최적화
   const io = socketIO(server, {
     cors: corsOptions,
-    pingTimeout: 120000,        // 2분으로 증가하여 연결 안정성 향상
-    pingInterval: 50000,        // 50초로 증가하여 불필요한 핑 감소
-    transports: ['websocket'],  // 웹소켓만 사용하여 성능 최적화
+    pingTimeout: 300000,        // 5분 (긴 연결 유지)
+    pingInterval: 15000,        // 15초 (더 빈번한 상태 체크)
+    transports: ['websocket', 'polling'],  // 폴백 지원
     allowUpgrades: true,
+
+    // 재연결 설정
+    reconnection: true,
+    reconnectionAttempts: 10,
+    reconnectionDelay: 1000,    
+    reconnectionDelayMax: 5000, 
     
     perMessageDeflate: {
       threshold: 1024,          // 1KB로 설정하여 작은 메시지 압축
       zlibInflateFilter: () => true,
       memLevel: 3,              // 메모리 사용량 최적화
-      level: 2                  // 압축 레벨 조정
+      level: 2,                  // 압축 레벨 조정
+      chunkSize: 8 * 1024,    
+      windowBits: 14  
     },
     
-    maxHttpBufferSize: 1e6,     // 1MB로 설정하여 대용량 메시지 처리
-    connectTimeout: 10000,      // 10초로 설정하여 연결 안정성 향상
+    maxHttpBufferSize: 5e6,     // 1MB로 설정하여 대용량 메시지 처리
+    connectTimeout: 45000,      // 10초로 설정하여 연결 안정성 향상
     
     adapter: createAdapter(
       redisManager.pubClient,
       redisManager.subClient,
       {
         publishOnSpecificResponseOnly: true,
-        requestsTimeout: 5000,   // 5초로 설정하여 안정성 향상
-        publishRetries: 3,       // 3회로 증가하여 안정성 향상
-        key: 'socket.io',
-        publishTimeout: 3000     // 3초로 설정하여 안정성 향상
+        requestsTimeout: 15000,   // 5초로 설정하여 안정성 향상
+        publishRetries: 7,       // 3회로 증가하여 안정성 향상
+        key: `socket.io:worker:${cluster.worker.id}`,
+        publishTimeout: 8000,     // 3초로 설정하여 안정성 향상
+        heartbeatInterval: 15000,
+      heartbeatTimeout: 60000
       }
     ),
 
     upgradeTimeout: 10000,      // 업그레이드 타임아웃 10초로 설정
     serveClient: false,
-    allowEIO3: false,
+    allowEIO3: true,
+    rememberUpgrade: true,
+    destroyUpgrade: true,
+    destroyUpgradeTimeout: 5000,
     cors: {
       ...corsOptions,
       preflightContinue: false,
