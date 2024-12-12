@@ -13,6 +13,7 @@ const redisManager = require('./config/redis');
 
 const app = express();
 const server = http.createServer(app);
+const PORT = process.env.PORT || 5000;
 
 // trust proxy 설정 추가
 app.set('trust proxy', 1);
@@ -182,10 +183,15 @@ console.log('MONGO_URI:', process.env.MONGO_URI);
 mongoose.connect(process.env.MONGO_URI || 'mongodb://localhost:27017/bootcampchat')
   .then(() => {
     console.log('MongoDB Connected');
+    server.listen(PORT, '0.0.0.0', () => {
+      console.log(`Server running on port ${PORT}`);
+      console.log('Environment:', process.env.NODE_ENV);
+      console.log('API Base URL:', `http://0.0.0.0:${PORT}/api`);
+    });
   })
   .catch(err => {
     console.error('Server startup error:', err);
     process.exit(1);
   });
 
-module.exports = { app };
+module.exports = { app, server };
