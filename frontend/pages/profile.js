@@ -118,6 +118,7 @@ const Profile = () => {
     e.preventDefault();
     setError('');
     setSuccess('');
+    console.log(formData);
 
     if (formData.newPassword !== formData.confirmPassword) {
       setError('새 비밀번호가 일치하지 않습니다.');
@@ -151,7 +152,6 @@ const Profile = () => {
         newPassword: '', 
         confirmPassword: '' 
       }));
-
       // 전역 이벤트 발생
       window.dispatchEvent(new Event('userProfileUpdate'));
 

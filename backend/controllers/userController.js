@@ -130,8 +130,41 @@ exports.getProfile = async (req, res) => {
 // 프로필 업데이트
 exports.updateProfile = async (req, res) => {
   try {
-    const { name } = req.body;
+    const { name, currentPassword, newPassword } = req.body;
+    
+    // 비밀번호 변경 요청인 경우
+    if (currentPassword && newPassword) {
+      const user = await User.findById(req.user.id).select('+password');
+      
+      if (!user) {
+        return res.status(404).json({
+          success: false,
+          message: '사용자를 찾을 수 없습니다.'
+        });
+      }
 
+      try {
+        // User 모델의 changePassword 메서드 사용
+        await user.changePassword(currentPassword, newPassword);
+        
+        if (name) {
+          user.name = name;
+          await user.save();
+        }
+
+        return res.json({
+          success: true,
+          message: '비밀번호가 변경되었습니다.'
+        });
+      } catch (error) {
+        return res.status(401).json({
+          success: false,
+          message: error.message
+        });
+      }
+    }
+
+    // 이름 변경 요청인 경우 (기존 코드 유지)
     if (!name || name.trim().length === 0) {
       return res.status(400).json({
         success: false,
