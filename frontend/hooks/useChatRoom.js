@@ -220,6 +220,14 @@ export const useChatRoom = () => {
           throw new Error("Invalid messages format");
         }
 
+        // 중복 제거 및 유효성 검사
+        const newMessages = loadedMessages.filter((msg) => {
+          if (!msg._id || !msg.content || !msg.timestamp) return false;
+          if (processedMessageIds.current.has(msg._id)) return false;
+          processedMessageIds.current.add(msg._id);
+          return true;
+        });
+
         setMessages((prev) => {
           // 중복 메시지 필터링 개선
           const newMessages = loadedMessages.filter((msg) => {
@@ -350,7 +358,7 @@ export const useChatRoom = () => {
       }
     });
 
-    //messageCreated 이벤트 리스너
+    // messageCreated 이벤트 리스너
     socketRef.current.on("messageCreated", (newMessage) => {
       if (
         !newMessage ||
@@ -469,6 +477,7 @@ export const useChatRoom = () => {
   );
 
   // Socket connection monitoring
+  // Socket connection monitoring
   useEffect(() => {
     if (!socketRef.current || !currentUser) return;
 
@@ -478,6 +487,42 @@ export const useChatRoom = () => {
       setConnectionStatus("connected");
       setConnected(true);
 
+      // 이전 메시지 이벤트 리스너
+      socketRef.current.on("previousMessages", (response) => {
+        console.log("Previous messages received:", response);
+        try {
+          if (!response || typeof response !== "object") {
+            throw new Error("Invalid response format");
+          }
+
+          const { messages: loadedMessages = [], hasMore } = response;
+          const isInitialLoad = messages.length === 0;
+
+          processMessages(loadedMessages, hasMore, isInitialLoad);
+        } catch (error) {
+          console.error("Error processing previous messages:", error);
+          setError("메시지 로드 중 문제가 발생했습니다.");
+        }
+      });
+
+      // 새 메시지 이벤트 리스너
+      socketRef.current.on("message", (newMessage) => {
+        console.log("New message received:", newMessage);
+        if (!newMessage || !newMessage._id) return;
+
+        setMessages((prevMessages) => {
+          if (prevMessages.some((msg) => msg._id === newMessage._id)) {
+            return prevMessages; // 중복 메시지 제거
+          }
+          return [...prevMessages, newMessage];
+        });
+
+        if (isNearBottom) {
+          scrollToBottom(); // 하단으로 스크롤
+        }
+      });
+
+      // 초기 방 설정
       if (
         router.query.room &&
         !setupCompleteRef.current &&
@@ -492,68 +537,30 @@ export const useChatRoom = () => {
       }
     };
 
-    const handleDisconnect = (reason) => {
-      if (!mountedRef.current) return;
-      console.log("Socket disconnected:", reason);
+    const handleDisconnect = () => {
+      console.log("Socket disconnected");
       setConnectionStatus("disconnected");
-      socketInitializedRef.current = false;
-      setupCompleteRef.current = false;
-    };
-
-    const handleError = (error) => {
-      if (!mountedRef.current) return;
-      console.error("Socket connection error:", error);
-      setConnectionStatus("error");
-      setError("채팅 서버와의 연결이 끊어졌습니다.");
-    };
-
-    const handleReconnecting = (attemptNumber) => {
-      if (!mountedRef.current) return;
-      console.log(`Reconnection attempt ${attemptNumber}`);
-      setConnectionStatus("connecting");
-    };
-
-    const handleReconnectSuccess = () => {
-      if (!mountedRef.current) return;
-      console.log("Reconnected successfully");
-      setConnectionStatus("connected");
-      setConnected(true);
-      setError("");
-
-      // 재연결 시 채팅방 재접속
-      if (router.query.room) {
-        setupRoom().catch((error) => {
-          console.error("Room reconnection error:", error);
-          setError("채팅방 재연결에 실패했습니다.");
-        });
-      }
+      setConnected(false);
     };
 
     socketRef.current.on("connect", handleConnect);
     socketRef.current.on("disconnect", handleDisconnect);
-    socketRef.current.on("connect_error", handleError);
-    socketRef.current.on("reconnecting", handleReconnecting);
-    socketRef.current.on("reconnect", handleReconnectSuccess);
-
-    setConnectionStatus(
-      socketRef.current.connected ? "connected" : "disconnected"
-    );
 
     return () => {
       if (socketRef.current) {
         socketRef.current.off("connect", handleConnect);
         socketRef.current.off("disconnect", handleDisconnect);
-        socketRef.current.off("connect_error", handleError);
-        socketRef.current.off("reconnecting", handleReconnecting);
-        socketRef.current.off("reconnect", handleReconnectSuccess);
+        socketRef.current.off("message");
+        socketRef.current.off("previousMessages");
       }
     };
   }, [
+    currentUser,
     router.query.room,
     setupRoom,
     setConnected,
-    currentUser,
-    isInitialized,
+    setConnectionStatus,
+    processMessages,
     setError,
   ]);
 
