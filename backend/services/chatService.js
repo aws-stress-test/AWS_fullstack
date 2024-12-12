@@ -125,10 +125,12 @@ class ChatService {
         await this.flushMessageBuffer();
       }
 
-      const job = await messageQueue.add('newMessage', message, {
-        removeOnComplete: true,
-        attempts: 3,
-        backoff: { type: 'exponential', delay: 500 }
+      const job = await messageQueue.add({
+        room: roomId,
+        content: messageContent,
+        userId: sender,
+        timestamp: Date.now(),
+        type: 'text'
       });
 
       return { 

@@ -1,5 +1,5 @@
 const Queue = require('bull');
-const { sentinelConfig } = require('../config/redis');
+const Message = require('../models/Message');
 
 const messageQueue = new Queue('messageQueue', {
   redis: {
@@ -34,12 +34,63 @@ const messageQueue = new Queue('messageQueue', {
   }
 });
 
+// 메시지 일괄 처리 함수
+const processBulkMessages = async (messages) => {
+  try {
+    // DB 삽입용 메시지 데이터 준비
+    const messagesForDB = messages.map(msg => ({
+      room: msg.room,
+      content: msg.content,
+      type: msg.type || 'text',
+      sender: msg.userId,
+      timestamp: new Date(msg.timestamp),
+      file: msg.fileData || null,
+      ...(msg.mentions && { mentions: msg.mentions }),
+      ...(msg.metadata && { metadata: msg.metadata })
+    }));
+
+    // MongoDB에 벌크 삽입
+    const savedMessages = await Message.insertMany(messagesForDB);
+
+    // Redis에 캐싱
+    const pipeline = redisManager.pubClient.multi();
+    const roomGroups = messages.reduce((acc, msg) => {
+      const roomId = msg.room;
+      if (!acc[roomId]) acc[roomId] = [];
+      acc[roomId].push(msg);
+      return acc;
+    }, {});
+
+    // Redis Sorted Set에 메시지 추가
+    for (const [roomId, roomMessages] of Object.entries(roomGroups)) {
+      const key = `messages:${roomId}`;
+      roomMessages.forEach(msg => {
+        pipeline.zadd(key, msg.timestamp, JSON.stringify({
+          ...msg,
+          _id: savedMessages.find(m => 
+            m.room === msg.room && 
+            m.timestamp.getTime() === msg.timestamp
+          )?._id
+        }));
+      });
+    }
+
+    await pipeline.exec();
+    return savedMessages;
+
+  } catch (error) {
+    logger.error('Bulk message processing error:', error);
+    throw error;
+  }
+};
+
 // 동시성 설정 (CPU 코어 수에 따라 조정)
 messageQueue.process(8, async (job) => {
   try {
-    return await job.data;
+    const messages = Array.isArray(job.data) ? job.data : [job.data];
+    return await processBulkMessages(messages);
   } catch (error) {
-    console.error('Message processing error:', error);
+    logger.error('Message processing error:', error);
     throw error;
   }
 });
