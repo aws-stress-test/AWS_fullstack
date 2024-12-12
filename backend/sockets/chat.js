@@ -207,6 +207,25 @@ module.exports = function(io) {
         await ChatService.handleBulkMessages([joinMsg]);
 
         const { messages, hasMore, oldestTimestamp } = await ChatService.loadMessages(roomId);
+
+        // 참여자 업데이트 이벤트 보내기
+        io.to(roomId).emit('participantsUpdate', room.participants);
+
+        // 모든 클라이언트에게 방 정보 업데이트 이벤트
+        io.emit('roomUpdated', {
+          ...room.toObject(),
+          participants: room.participants
+        });
+
+        socket.emit('joinRoomSuccess', {
+          roomId,
+          participants: room.participants,
+          messages,
+          hasMore,
+          oldestTimestamp,
+          activeStreams: []
+        });
+        
         const activeStreams = Array.from(streamingSessions.values())
           .filter(session => session.room === roomId)
           .map(session => ({
@@ -228,7 +247,6 @@ module.exports = function(io) {
         });
 
         io.to(roomId).emit('participantsUpdate', room.participants);
-        // joinMsg는 flush 후 'messages' 이벤트 통해 클라이언트에게 전달
 
         logDebug('user joined room', {
           userId: socket.user.id,
@@ -332,6 +350,11 @@ module.exports = function(io) {
 
         if (updatedRoom) {
           io.to(roomId).emit('participantsUpdate', updatedRoom.participants);
+          // 모든 클라이언트에 방 업데이트 이벤트 emit
+          io.emit('roomUpdated', {
+            ...updatedRoom.toObject(),
+            participants: updatedRoom.participants
+          });
         }
 
       } catch (error) {
@@ -415,6 +438,11 @@ module.exports = function(io) {
 
           if (updatedRoom) {
             io.to(roomId).emit('participantsUpdate', updatedRoom.participants);
+            // 모든 클라이언트에 방 업데이트 이벤트 emit
+            io.emit('roomUpdated', {
+              ...updatedRoom.toObject(),
+              participants: updatedRoom.participants
+            });
           }
         }
 
