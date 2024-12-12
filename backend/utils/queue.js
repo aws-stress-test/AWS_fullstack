@@ -130,7 +130,6 @@ setInterval(async () => {
 // Redis 상태 체크
 (async () => {
   try {
-    const redisManager = new RedisManager();
     await redisManager.connect();
     console.log("Redis connected successfully.");
     console.log("Redis pubClient status:", redisManager.pubClient.status);
