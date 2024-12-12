@@ -52,6 +52,7 @@ const getFileType = (mimetype) => {
   return typeMap[type] || '파일';
 };
 
+<<<<<<< HEAD
 // S3 저장소 설정
 const uploadMiddleware = multer({
   storage: multerS3({
@@ -62,6 +63,43 @@ const uploadMiddleware = multer({
       cb(null, uniqueSuffix + '_' + file.originalname);
     }
   })
+=======
+const validateFileSize = (file) => {
+  const type = file.mimetype.split('/')[0];
+  const limit = FILE_SIZE_LIMITS[type] || FILE_SIZE_LIMITS.document;
+  
+  if (file.size > limit) {
+    const limitInMB = Math.floor(limit / 1024 / 1024);
+    throw new Error(`${getFileType(file.mimetype)} 파일은 ${limitInMB}MB를 초과할 수 없습니다.`);
+  }
+  return true;
+};
+
+
+// multer 인스턴스 생성
+const uploadMiddleware = multer({
+  storage: multerS3({
+    s3: s3,
+    bucket: 'bw-files',
+    acl: 'public-read', // 공개 읽기 설정
+    key: (req, file, cb) => {
+      const timestamp = Date.now();
+      const randomString = crypto.randomBytes(8).toString('hex');
+      const safeFilename = `${timestamp}_${randomString}${path.extname(file.originalname)}`;
+      cb(null, `uploads/${safeFilename}`);
+    }
+  }),
+  limits: {
+    fileSize: 50 * 1024 * 1024 // 파일 크기 제한 (50MB)
+  },
+  fileFilter: (req, file, cb) => {
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/gif'];
+    if (!allowedTypes.includes(file.mimetype)) {
+      return cb(new Error('지원하지 않는 파일 형식입니다.'));
+    }
+    cb(null, true);
+  }
+>>>>>>> origin/deploy
 });
 
 // 에러 핸들러 미들웨어
