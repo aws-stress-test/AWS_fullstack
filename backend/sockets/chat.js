@@ -265,6 +265,7 @@ module.exports = function(io) {
     });
 
     socket.on('chatMessage', async (messageData) => {
+      console.log('Received chatMessage:', messageData);
       try {
         if (!socket.user) throw new Error('Unauthorized');
         if (!messageData) throw new Error('메시지 데이터가 없습니다.');
@@ -304,7 +305,11 @@ module.exports = function(io) {
           tempId: result.tempId,
           timestamp: result.timestamp
         });
-
+        console.log('Broadcasting message:', {
+          _id: result.tempId,
+          ...msgData,
+          timestamp: result.timestamp
+        });
         // 채팅방의 모든 참가자에게 message 이벤트로 브로드캐스트
         io.to(room).emit('message', {
           _id: result.tempId,
