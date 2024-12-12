@@ -236,6 +236,17 @@ export const useChatRoom = () => {
     setError,
   ]);
 
+  // 이벤트 리스너를 직접 연결하는 useEffect 추가
+  useEffect(() => {
+    if (socketRef.current && connected && !initializingRef.current) {
+      console.log("Setting up event listeners from useEffect");
+      const cleanupListeners = setupEventListeners();
+      return () => {
+        cleanupListeners?.();
+      };
+    }
+  }, [socketRef.current, connected, setupEventListeners]);
+
   // Socket connection monitoring
   useEffect(() => {
     if (!socketRef.current || !currentUser) return;

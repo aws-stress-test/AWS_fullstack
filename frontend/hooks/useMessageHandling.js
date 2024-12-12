@@ -109,7 +109,11 @@ export const useMessageHandling = (
       }
 
       try {
-        console.log("[Chat] Sending message:", messageData);
+        console.log('Emitting chatMessage:', {
+          room: roomId,
+          type: 'text',
+          content: messageData.content.trim()
+        });
 
         if (messageData.type === "file") {
           setUploading(true);

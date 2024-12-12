@@ -390,7 +390,14 @@ export const useRoomHandling = (
         // 3. Setup Event Listeners
         console.log("Setting up event listeners...");
         if (mountedRef.current) {
-          setupEventListeners();
+          const cleanupListeners = setupEventListeners(); // cleanup 함수 저장
+  
+          // cleanup 로직에 이벤트 리스너 정리 추가
+          const originalCleanup = cleanup;
+          cleanup = () => {
+            cleanupListeners?.();  // 이벤트 리스너 정리
+            originalCleanup();     // 기존 cleanup 실행
+          };
         }
 
         // 4. Join Room and Load Messages
