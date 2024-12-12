@@ -94,7 +94,7 @@ const processBulkMessages = async (messages) => {
     await pipeline.exec();
     return savedMessages;
   } catch (error) {
-    logger.error("Bulk message processing error:", error);
+    logger.error("Bulk message processing error:", { error, messages });
     throw error;
   }
 };
@@ -102,10 +102,11 @@ const processBulkMessages = async (messages) => {
 // 동시성 설정 (CPU 코어 수에 따라 조정)
 messageQueue.process(8, async (job) => {
   try {
+    logger.info("Processing job:", job.id);
     const messages = Array.isArray(job.data) ? job.data : [job.data];
     return await processBulkMessages(messages);
   } catch (error) {
-    logger.error("Message processing error:", error);
+    logger.error("Message processing error:", { jobId: job.id, error });
     throw error;
   }
 });
@@ -116,26 +117,28 @@ messageQueue.on("error", (error) => {
 });
 
 messageQueue.on("failed", (job, error) => {
-  logger.error("Job failed:", job.id, error);
+  logger.error("Job failed:", { jobId: job.id, error });
 });
 
 messageQueue.on("completed", (job) => {
-  logger.info("Job completed:", job.id);
+  logger.info("Job completed:", { jobId: job.id });
 });
 
 // 큐 상태 모니터링
 setInterval(async () => {
-  const jobCounts = await messageQueue.getJobCounts();
-  logger.info("Queue status:", jobCounts);
+  try {
+    const jobCounts = await messageQueue.getJobCounts();
+    logger.info("Queue status:", jobCounts);
+  } catch (error) {
+    logger.error("Error fetching queue status:", error);
+  }
 }, 30000);
 
 // Redis Sentinel 연결 테스트
 (async () => {
   try {
-    const isReady = await messageQueue.isReady();
-    if (isReady) {
-      logger.info("Message queue connected successfully.");
-    }
+    await redisManager.connect();
+    logger.info("Message queue connected successfully.");
 
     // 테스트 작업 추가
     const testJob = await messageQueue.add({ test: "data" });
