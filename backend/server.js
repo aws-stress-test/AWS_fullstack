@@ -1,7 +1,5 @@
 require('dotenv').config();
 const mongoose = require('mongoose');
-const cluster = require('cluster');
-const os = require('os');
 const express = require('express');
 const cors = require('cors');
 const http = require('http');
@@ -11,10 +9,10 @@ const path = require('path');
 const { router: roomsRouter, initializeSocket } = require('./routes/api/rooms');
 const routes = require('./routes');
 const redisManager = require('./config/redis');
-const RateLimit = require('express-rate-limit');
 
 
 const app = express();
+const server = http.createServer(app);
 
 // trust proxy 설정 추가
 app.set('trust proxy', 1);
@@ -56,6 +54,9 @@ app.options('*', cors(corsOptions));
 // 정적 파일 제공
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
+// API 라우트 마운트
+app.use('/api', routes);
+
 // 요청 로깅
 if (process.env.NODE_ENV === 'development') {
   app.use((req, res, next) => {
@@ -73,8 +74,6 @@ app.get('/health', (req, res) => {
   });
 });
 
-// API 라우트 마운트
-app.use('/api', routes);
 
 (async() => {
   await redisManager.connect();

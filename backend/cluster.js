@@ -6,7 +6,7 @@ const { app } = require('./server');
 cluster.schedulingPolicy = cluster.SCHED_RR; // Round-Robin 스케줄링
 
 if (cluster.isPrimary) {
-  const numCPUs = 2;
+  const numCPUs = os.cpus().length;
   
   // 워커 생성 전 메모리 할당
   const workerHeapSize = Math.floor((os.totalmem() * 0.7) / numCPUs);
