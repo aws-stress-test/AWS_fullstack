@@ -86,7 +86,7 @@ class RedisManager {
       // 메모리 정책 설정
       await this.setMemoryPolicy();
 
-      logger.info('Redis Sentinel 연결 성공');
+      //logger.info('Redis Sentinel 연결 성공');
       return { pubClient: this.pubClient, subClient: this.subClient };
     } catch (error) {
       logger.error('Redis Sentinel 연결 실패:', error);
@@ -106,10 +106,10 @@ class RedisManager {
         await this.pubClient.call(command, ...args);
       }
   
-      logger.info('Redis 메모리 정책 설정 완료', {
-        policy: REDIS_CONFIG.MEMORY_POLICY,
-        limit: REDIS_CONFIG.MEMORY_LIMIT
-      });
+      // logger.info('Redis 메모리 정책 설정 완료', {
+      //   policy: REDIS_CONFIG.MEMORY_POLICY,
+      //   limit: REDIS_CONFIG.MEMORY_LIMIT
+      // });
     } catch (error) {
       logger.error('Redis 메모리 정책 설정 실패:', error);
       throw error;
