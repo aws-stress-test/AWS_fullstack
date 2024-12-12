@@ -104,8 +104,16 @@ class RedisManager {
     try {
       const existingSession = await this.getCache(sessionKey);
       if (existingSession) {
-        console.log(`Existing session found for user ${userId}. Deleting...`);
-        await this.delCache(sessionKey);
+        console.warn(
+          `Existing session found for user ${userId}. Attempting to delete...`
+        );
+        const isDeleted = await this.delCache(sessionKey);
+        if (!isDeleted) {
+          console.error(
+            `Failed to delete existing session for user ${userId}.`
+          );
+          throw new Error("Failed to delete existing session");
+        }
       }
 
       const sessionId = this.generateSessionId();
@@ -119,7 +127,10 @@ class RedisManager {
       console.log(`New session created for user ${userId}.`);
       return newSessionData;
     } catch (error) {
-      console.error(`Failed to create session for user ${userId}:`, error);
+      console.error(
+        `Failed to create session for user ${userId}:`,
+        error.stack || error
+      );
       throw error;
     }
   }
@@ -129,24 +140,31 @@ class RedisManager {
     try {
       const sessionData = await this.getCache(sessionKey);
       if (!sessionData) {
-        console.error(`No session data found for user ${userId}.`);
+        console.warn(`No session data found for user ${userId}.`);
         return { isValid: false, message: "Session not found" };
       }
 
-      console.log(`Validating session for user ${userId}:`, {
-        sessionData,
-        sessionId,
-      });
       if (sessionData.sessionId !== sessionId) {
-        console.error(`Session mismatch for user ${userId}.`);
+        console.warn(`Session ID mismatch for user ${userId}.`);
         return { isValid: false, message: "Session mismatch" };
       }
 
-      await this.setCache(sessionKey, sessionData, this.defaultTTL);
-      console.log(`Session for user ${userId} is valid.`);
+      try {
+        await this.setCache(sessionKey, sessionData, this.defaultTTL);
+        console.log(`Session TTL refreshed for user ${userId}.`);
+      } catch (ttlError) {
+        console.warn(
+          `Failed to refresh TTL for session ${sessionId} of user ${userId}:`,
+          ttlError.stack || ttlError
+        );
+      }
+
       return { isValid: true, message: "Session is valid" };
     } catch (error) {
-      console.error(`Session validation failed for user ${userId}:`, error);
+      console.error(
+        `Session validation failed for user ${userId}:`,
+        error.stack || error
+      );
       return { isValid: false, message: "Session validation error" };
     }
   }
