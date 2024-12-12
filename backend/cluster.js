@@ -1,7 +1,5 @@
 const cluster = require('cluster');
 const os = require('os');
-const http = require('http');
-const { app } = require('./server');
 
 cluster.schedulingPolicy = cluster.SCHED_RR; // Round-Robin 스케줄링
 
@@ -21,13 +19,6 @@ if (cluster.isPrimary) {
     console.log(`[마스터] 워커 ${worker.process.pid} 종료됨`);
     setTimeout(() => cluster.fork(), 1000);
   });
-
-  // 단일 포트에서 서버를 실행
-  const PORT = process.env.PORT || 5000;
-  server.listen(PORT, '0.0.0.0', () => {
-    console.log(`Server running on port ${PORT}`);
-  });
-
   // 예외 처리
   process.on('uncaughtException', (err) => {
     console.error('예기치 않은 에러:', err);
