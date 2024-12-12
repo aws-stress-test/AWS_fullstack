@@ -1,6 +1,7 @@
 const Queue = require("bull");
 const Message = require("../models/Message");
 const { createLogger, format, transports } = require("winston");
+const redisManager = require("../config/redis");
 
 // Logger 설정
 const logger = createLogger({
