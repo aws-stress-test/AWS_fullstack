@@ -350,6 +350,34 @@ export const useChatRoom = () => {
       }
     });
 
+    //messageCreated 이벤트 리스너
+    socketRef.current.on("messageCreated", (newMessage) => {
+      if (
+        !newMessage ||
+        !mountedRef.current ||
+        messageProcessingRef.current ||
+        !newMessage._id
+      )
+        return;
+      if (processedMessageIds.current.has(newMessage._id)) {
+        return;
+      }
+
+      console.log("Received messageCreated:", newMessage);
+      processedMessageIds.current.add(newMessage._id);
+
+      setMessages((prev) => {
+        if (prev.some((msg) => msg._id === newMessage._id)) {
+          return prev;
+        }
+        return [...prev, newMessage];
+      });
+
+      if (isNearBottom) {
+        scrollToBottom();
+      }
+    });
+
     // 이전 메시지 이벤트
     socketRef.current.on("previousMessages", (response) => {
       if (!mountedRef.current || messageProcessingRef.current) return;
