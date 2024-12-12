@@ -1,11 +1,16 @@
 {
   "dependencies": {
     "@playwright/test": "^1.49.1",
+    "aws-sdk": "^2.1692.0",
+    "multer-s3": "^3.0.1",
     "winston": "^3.17.0",
     "winston-daily-rotate-file": "^5.0.0"
   },
   "scripts": {
     "start": "node backend/cluster.js",
     "dev": "nodemon backend/cluster.js"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.7"
   }
 }
