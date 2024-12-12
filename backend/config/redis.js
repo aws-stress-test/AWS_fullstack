@@ -89,9 +89,13 @@ class RedisManager {
         ['CONFIG', 'SET', 'appendonly', REDIS_CONFIG.APPEND_ONLY]
       ];
 
-      await Promise.all(
-        commands.map(cmd => this.pubClient.config(...cmd))
-      );
+      // await Promise.all(
+      //   commands.map(cmd => this.pubClient.config(...cmd))
+      // );
+
+      for (const cmd of commands) {
+        await this.pubClient.sendCommand(cmd);
+      }
 
       // logger.info('Redis 메모리 정책 설정 완료', {
       //   policy: REDIS_CONFIG.MEMORY_POLICY,
