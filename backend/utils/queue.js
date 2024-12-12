@@ -4,9 +4,18 @@ const logger = require('./logger');
 
 const messageQueue = new Queue('messageQueue', {
   redis: {
-    ...sentinelConfig,
-    enableReadyCheck: false,
-    maxRetriesPerRequest: 3
+    sentinels: [
+      { host: '43.202.179.98', port: 26379 },
+      { host: '52.78.152.29', port: 26379 },
+      { host: '43.201.72.113', port: 26379 }
+    ],
+    name: 'mymaster',
+    connectTimeout: 15000,
+    maxRetriesPerRequest: 3,
+    retryStrategy: (times) => {
+      if (times > 3) return null;
+      return Math.min(times * 50, 1000);
+    }
   },
   defaultJobOptions: {
     attempts: 3,
@@ -54,5 +63,21 @@ setInterval(async () => {
   const jobCounts = await messageQueue.getJobCounts();
   logger.info('Queue status:', jobCounts);
 }, 30000);
+
+// Redis Sentinel 연결 테스트
+(async () => {
+  try {
+    const isReady = await messageQueue.isReady();
+    if (isReady) {
+      logger.info('Message queue connected successfully.');
+    }
+
+    // 테스트 작업 추가
+    const testJob = await messageQueue.add({ test: 'data' });
+    logger.info('Test job added:', testJob.id);
+  } catch (error) {
+    logger.error('Failed to connect message queue or add test job:', error);
+  }
+})();
 
 module.exports = messageQueue; 
