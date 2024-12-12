@@ -1,0 +1,37 @@
+module.exports = {
+  apps: [{
+    name: "frontend",
+    script: "npm",
+    args: "start",
+    exec_mode: "cluster",
+    instances: 2,
+    sticky_sessions: true,
+    
+    max_memory_restart: '1536M',
+    node_args: '--max-old-space-size=1536',
+    
+    env: {
+      NODE_ENV: "production",
+      PORT: 3000,
+      INSTANCE_ID: process.env.EC2_INSTANCE_ID,
+      TEST_GROUP: process.env.TEST_GROUP || 'load-test-1',
+    },
+
+    exp_backoff_restart_delay: 100,
+    wait_ready: true,
+    kill_timeout: 5000,
+    max_restarts: 10,
+    autorestart: true,
+    watch: true,    //나중에 끄기
+    
+    // 로그 경로 수정
+    merge_logs: true,
+    log_type: 'json',
+    log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
+    error_file: '../logs/frontend-error.log',  // 상위 디렉토리로 경로 수정
+    out_file: '../logs/frontend-out.log',      // 상위 디렉토리로 경로 수정
+    
+    AWS_CLOUDWATCH_LOG_GROUP: '/load-test/frontend',
+    AWS_CLOUDWATCH_LOG_STREAM: `frontend-${process.env.EC2_INSTANCE_ID}`
+  }]
+}; 

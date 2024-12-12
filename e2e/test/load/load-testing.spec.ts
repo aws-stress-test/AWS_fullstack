@@ -3,7 +3,7 @@ import { test, expect } from '@playwright/test';
 import { TestHelpers } from '../helpers/test-helpers';
 
 // 테스트 타임아웃 설정
-test.setTimeout(300000); // 5분
+test.setTimeout(600000); // 10분
 
 interface Metrics {
   totalMessages: number;
