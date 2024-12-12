@@ -46,6 +46,18 @@ class RedisManager {
     this.defaultTTL = REDIS_CONFIG.DEFAULT_TTL;
   }
 
+  // Failover 처리 메서드 추가
+  handleFailover() {
+    logger.info('Redis Sentinel failover detected. Reconnecting...');
+    this.connect()
+      .then(() => {
+        logger.info('Reconnected to Redis after failover.');
+      })
+      .catch((err) => {
+        logger.error('Failed to reconnect to Redis after failover:', err);
+      });
+  }
+
   async connect() {
     try {
       this.pubClient = new Redis({
