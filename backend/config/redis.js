@@ -1,6 +1,6 @@
 const Redis = require('ioredis');
 const Queue = require('bull');
-const logger = require('../utils/logger');
+const logger = require('../utils/logger.js');
 
 // Redis 설정 상수
 const REDIS_CONFIG = {
