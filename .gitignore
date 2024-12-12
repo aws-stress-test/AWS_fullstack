@@ -28,3 +28,5 @@ Thumbs.db
 .vscode/
 
 install.sh
+
+*/ansible.log

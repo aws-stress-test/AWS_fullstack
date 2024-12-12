@@ -1,0 +1,119 @@
+---
+- name: Print a debug message
+  debug:
+    msg: "This is a test message."
+
+- name: Check internet connectivity
+  ansible.builtin.shell: ping -c 4 8.8.8.8
+  register: ping_result
+  ignore_errors: yes
+
+- name: Print the result of internet connectivity check
+  ansible.builtin.debug:
+    msg: |
+      Internet connectivity status: 
+      {{ 'Connected' if ping_result.rc == 0 else 'Not Connected' }}
+
+- name: Update apt cache
+  apt:
+    update_cache: yes
+
+- name: Install dependencies
+  apt:
+    name:
+      - apt-transport-https
+      - ca-certificates
+      - curl
+      - gnupg
+      - software-properties-common
+    state: present
+
+- name: Print architecture
+  debug:
+    msg: "The architecture of this machine is {{ ansible_architecture }}"
+
+- name: Set architecture variable for Docker
+  set_fact:
+    docker_arch: "{{ 'arm64' if ansible_architecture == 'aarch64' else 'amd64' if ansible_architecture == 'x86_64' else ansible_architecture }}"
+
+- name: Print architecture
+  debug:
+    msg: "The docker_arch of this machine is {{ docker_arch }}"
+
+- name: Add Docker's official GPG key
+  apt_key:
+    url: https://download.docker.com/linux/ubuntu/gpg
+    state: present
+
+- name: Add Docker Repository
+  apt_repository:
+    repo: "deb [arch={{ docker_arch }}] https://download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable"
+    state: present
+    update_cache: yes
+
+- name: Install Docker CE
+  apt:
+    name: docker-ce
+    state: latest
+    update_cache: yes
+  become: yes
+
+- name: Install Docker Compose
+  get_url:
+    url: "https://github.com/docker/compose/releases/download/1.29.2/docker-compose-{{ ansible_system }}-{{ ansible_architecture }}"
+    dest: /usr/local/bin/docker-compose
+    mode: '0755'
+
+- name: Add remote user to docker group
+  user:
+    name: "{{ ansible_user }}"
+    groups: docker
+    append: yes
+  notify: Restart Docker
+
+- name: Ensure Docker is started and enabled
+  service:
+    name: docker
+    state: started
+    enabled: yes
+
+- name: Set permissions for Docker socket
+  file:
+    path: /var/run/docker.sock
+    owner: root
+    group: docker
+    mode: '0660'
+    
+- name: Verify Docker group membership
+  command: id -nG "{{ ansible_user }}"
+  register: group_membership
+  changed_when: false
+
+- name: Add user to docker group
+  ansible.builtin.user:
+    name: USERNAME
+    groups: docker
+    append: true
+
+- name: Reset ssh connection to allow user changes to affect ansible user
+  ansible.builtin.meta:
+    reset_connection
+
+
+- name: Check Docker version
+  command: docker --version
+  register: docker_version
+  changed_when: false
+
+- name: Print Docker version
+  debug:
+    msg: "Installed Docker version: {{ docker_version.stdout }}"
+
+- name: Check Docker Compose version
+  command: docker-compose --version
+  register: compose_version
+  changed_when: false
+
+- name: Print Docker Compose version
+  debug:
+    msg: "Installed Docker Compose version: {{ compose_version.stdout }}"

@@ -1,0 +1,50 @@
+{
+    "agent": {
+        "metrics_collection_interval": 30,
+        "run_as_user": "root"
+    },
+    "logs": {
+        "logs_collected": {
+            "files": {
+                "collect_list": [
+                    {
+                        "file_path": "/home/ubuntu/.pm2/logs/*.log",
+                        "log_group_name": "/load-test/backend",
+                        "log_stream_name": "{instance_id}-{filename}",
+                        "timestamp_format": "%Y-%m-%d %H:%M:%S",
+                        "multi_line_start_pattern": "{timestamp_format}"
+                    }
+                ]
+            }
+        }
+    },
+    "metrics": {
+        "metrics_collected": {
+            "cpu": {
+                "measurement": [
+                    "cpu_usage_idle",
+                    "cpu_usage_user",
+                    "cpu_usage_system",
+                    "cpu_usage_iowait"
+                ],
+                "metrics_collection_interval": 30
+            },
+            "mem": {
+                "measurement": [
+                    "mem_used_percent",
+                    "mem_available_percent"
+                ],
+                "metrics_collection_interval": 30
+            },
+            "net": {
+                "measurement": [
+                    "bytes_sent",
+                    "bytes_recv",
+                    "packets_sent",
+                    "packets_recv"
+                ],
+                "metrics_collection_interval": 30
+            }
+        }
+    }
+}

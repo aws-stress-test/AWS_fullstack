@@ -1,0 +1,52 @@
+- name: Update apt-get and install required packages
+  become: yes
+  apt:
+    update_cache: yes
+    name:
+      - unzip
+      - curl
+      - npm
+    state: present
+
+- name: Create tmp directory
+  file:
+    path: /tmp/awscli_install
+    state: directory
+
+- name: Download AWS CLI v2
+  get_url:
+    url: "https://awscli.amazonaws.com/awscli-exe-linux-{{ ansible_architecture }}.zip"
+    dest: /tmp/awscli_install/awscliv2.zip
+
+- name: Unzip AWS CLI v2
+  unarchive:
+    src: /tmp/awscli_install/awscliv2.zip
+    dest: /tmp/awscli_install/
+    remote_src: yes
+
+- name: Install AWS CLI v2
+  become: yes
+  command: /tmp/awscli_install/aws/install --update
+
+- name: Clean up tmp directory
+  file:
+    path: /tmp/awscli_install
+    state: absent
+
+- name: Verify AWS CLI installation
+  command: aws --version
+  register: aws_version_output
+
+- name: Show AWS CLI version
+  debug:
+    msg: "AWS CLI version: {{ aws_version_output.stdout }}"
+
+- name: Configure AWS CLI
+  shell: |
+    aws configure set aws_access_key_id {{ aws_access_key_id }}
+    aws configure set aws_secret_access_key {{ aws_secret_access_key }}
+    aws configure set default.region {{ aws_region }}
+  environment:
+    AWS_ACCESS_KEY_ID: "{{ aws_access_key_id }}"
+    AWS_SECRET_ACCESS_KEY: "{{ aws_secret_access_key }}"
+  no_log: true

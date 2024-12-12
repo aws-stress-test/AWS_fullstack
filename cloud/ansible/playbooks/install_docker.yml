@@ -1,0 +1,12 @@
+---
+- name: Install Docker
+  hosts: test
+  become: yes
+  roles:
+    - docker
+
+  tasks:
+    - name: Ensure Docker is installed
+      ansible.builtin.include_role:
+        name: docker
+        tasks_from: main

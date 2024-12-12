@@ -1,0 +1,7 @@
+---
+- name: Install AWS
+  hosts: earsToWorld
+  vars_files:
+  - ../inventory/group_vars/aws_deploy.yml
+  roles:
+    - aws
