@@ -8,7 +8,7 @@ const config: PlaywrightTestConfig = {
   },
   fullyParallel: false,
   retries: 0,
-  workers: 1,  // 부하 테스트는 단일 워커로 실행
+  workers: 2,  // 부하 테스트는 단일 워커로 실행
   reporter: [['html', { open: 'never' }]],
   use: {
     baseURL: process.env.BASE_URL || 'http://localhost:3000',
