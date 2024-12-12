@@ -91,9 +91,9 @@ if (cluster.isPrimary) {
   // Socket.IO 설정 최적화
   const io = socketIO(server, {
     cors: corsOptions,
-    pingTimeout: 300000,        // 5분 (긴 연결 유지)
-    pingInterval: 15000,        // 15초 (더 빈번한 상태 체크)
-    transports: ['websocket', 'polling'],  // 폴백 지원
+    pingTimeout: 300000,        
+    pingInterval: 15000,        
+    transports: ['websocket', 'polling'],  
     allowUpgrades: true,
 
     // 재연결 설정
@@ -111,24 +111,24 @@ if (cluster.isPrimary) {
       windowBits: 14  
     },
     
-    maxHttpBufferSize: 5e6,     // 1MB로 설정하여 대용량 메시지 처리
-    connectTimeout: 45000,      // 10초로 설정하여 연결 안정성 향상
+    maxHttpBufferSize: 3e6,     
+    connectTimeout: 45000,      
     
     adapter: createAdapter(
       redisManager.pubClient,
       redisManager.subClient,
       {
         publishOnSpecificResponseOnly: true,
-        requestsTimeout: 15000,   // 5초로 설정하여 안정성 향상
-        publishRetries: 7,       // 3회로 증가하여 안정성 향상
+        requestsTimeout: 60000,   
+        publishRetries: 10,       
         key: `socket.io:worker:${cluster.worker.id}`,
-        publishTimeout: 8000,     // 3초로 설정하여 안정성 향상
+        publishTimeout: 10000,     
         heartbeatInterval: 15000,
       heartbeatTimeout: 60000
       }
     ),
 
-    upgradeTimeout: 10000,      // 업그레이드 타임아웃 10초로 설정
+    upgradeTimeout: 10000,      
     serveClient: false,
     allowEIO3: true,
     rememberUpgrade: true,
@@ -141,43 +141,43 @@ if (cluster.isPrimary) {
     }
   });
 
-  // 연결 제한 설정
-  const connectionLimiter = new RateLimit({
-    windowMs: 60 * 1000,     
-    max: 3000,               // 3000명으로 증가
-    message: 'Too many connections',
-    skipFailedRequests: true
-  });
+  // // 연결 제한 설정
+  // const connectionLimiter = new RateLimit({
+  //   windowMs: 60 * 1000,     
+  //   max: 3000,               // 3000명으로 증가
+  //   message: 'Too many connections',
+  //   skipFailedRequests: true
+  // });
 
-  // Socket.IO 미들웨어 최적화
-  io.use(async (socket, next) => {
-    try {
-      const limited = await connectionLimiter.check(socket.handshake.address);
-      if (limited) {
-        return next(new Error('Too many connections'));
-      }
+  // // Socket.IO 미들웨어 최적화
+  // io.use(async (socket, next) => {
+  //   try {
+  //     const limited = await connectionLimiter.check(socket.handshake.address);
+  //     if (limited) {
+  //       return next(new Error('Too many connections'));
+  //     }
 
-      const memoryUsage = process.memoryUsage();
-      if (memoryUsage.heapUsed > 0.8 * memoryUsage.heapTotal) {
-        return next(new Error('Server is busy'));
-      }
+  //     const memoryUsage = process.memoryUsage();
+  //     if (memoryUsage.heapUsed > 0.8 * memoryUsage.heapTotal) {
+  //       return next(new Error('Server is busy'));
+  //     }
 
-      const token = socket.handshake.auth.token;
-      if (!token) {
-        return next(new Error('Authentication required'));
-      }
+  //     const token = socket.handshake.auth.token;
+  //     if (!token) {
+  //       return next(new Error('Authentication required'));
+  //     }
 
-      const session = await redisManager.getSession(token);
-      if (!session) {
-        return next(new Error('Invalid session'));
-      }
+  //     const session = await redisManager.getSession(token);
+  //     if (!session) {
+  //       return next(new Error('Invalid session'));
+  //     }
 
-      socket.user = session.user;
-      next();
-    } catch (error) {
-      next(new Error('Socket authentication failed'));
-    }
-  });
+  //     socket.user = session.user;
+  //     next();
+  //   } catch (error) {
+  //     next(new Error('Socket authentication failed'));
+  //   }
+  // });
 
   // 소켓 이벤트 핸들러 연결
   require('./sockets/chat')(io);
