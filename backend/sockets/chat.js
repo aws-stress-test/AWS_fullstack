@@ -5,7 +5,6 @@ const ChatService = require('../services/chatService');
 const aiService = require('../services/aiService');
 const User = require('../models/User');
 const Room = require('../models/Room');
-const logger = require('../utils/logger');
 
 module.exports = function(io) {
   const connectedUsers = new Map();
@@ -21,7 +20,7 @@ module.exports = function(io) {
   const DUPLICATE_LOGIN_TIMEOUT = 10000;
 
   const logDebug = (action, data) => {
-    logger.debug(`[Socket.IO] ${action}: ${JSON.stringify({ ...data, timestamp: new Date().toISOString() })}`);
+    console.log(`[Socket.IO] ${action}: ${JSON.stringify({ ...data, timestamp: new Date().toISOString() })}`);
   };
 
   const handleDuplicateLogin = async (existingSocket, newSocket) => {
@@ -42,13 +41,13 @@ module.exports = function(io) {
             existingSocket.disconnect(true);
             resolve();
           } catch (error) {
-            logger.error('Error during session termination:', error);
+            console.error('Error during session termination:', error);
             resolve();
           }
         }, DUPLICATE_LOGIN_TIMEOUT);
       });
     } catch (error) {
-      logger.error('Duplicate login handling error:', error);
+      console.error('Duplicate login handling error:', error);
       throw error;
     }
   };
@@ -98,7 +97,7 @@ module.exports = function(io) {
 
       const validationResult = await SessionService.validateSession(decoded.user.id, sessionId);
       if (!validationResult.isValid) {
-        logger.error('Session validation failed:', validationResult);
+        console.error('Session validation failed:', validationResult);
         return next(new Error(validationResult.message || 'Invalid session'));
       }
 
@@ -117,7 +116,7 @@ module.exports = function(io) {
       next();
 
     } catch (error) {
-      logger.error('Socket authentication error:', error);
+      console.error('Socket authentication error:', error);
       if (error.name === 'TokenExpiredError') return next(new Error('Token expired'));
       if (error.name === 'JsonWebTokenError') return next(new Error('Invalid token'));
       next(new Error('Authentication failed'));
@@ -166,7 +165,7 @@ module.exports = function(io) {
         socket.emit('previousMessagesLoaded', result);
 
       } catch (error) {
-        logger.error('Fetch previous messages error:', error);
+        console.error('Fetch previous messages error:', error);
         socket.emit('error', {
           type: 'LOAD_ERROR',
           message: error.message || '이전 메시지를 불러오는 중 오류가 발생했습니다.'
@@ -256,7 +255,7 @@ module.exports = function(io) {
         });
 
       } catch (error) {
-        logger.error('Join room error:', error);
+        console.error('Join room error:', error);
         socket.emit('joinRoomError', {
           message: error.message || '채팅방 입장에 실패했습니다.'
         });
@@ -308,7 +307,7 @@ module.exports = function(io) {
         await SessionService.updateLastActivity(socket.user.id);
 
       } catch (error) {
-        logger.error('Message handling error:', error);
+        console.error('Message handling error:', error);
         socket.emit('error', {
           code: error.code || 'MESSAGE_ERROR',
           message: error.message || '메시지 전송 중 오류가 발생했습니다.'
@@ -358,7 +357,7 @@ module.exports = function(io) {
         }
 
       } catch (error) {
-        logger.error('Leave room error:', error);
+        console.error('Leave room error:', error);
         socket.emit('error', {
           message: error.message || '채팅방 퇴장 중 오류가 발생했습니다.'
         });
@@ -377,7 +376,7 @@ module.exports = function(io) {
         });
 
       } catch (error) {
-        logger.error('Mark messages as read error:', error);
+        console.error('Mark messages as read error:', error);
         socket.emit('error', {
           message: '읽음 상태 업데이트 중 오류가 발생했습니다.'
         });
@@ -397,7 +396,7 @@ module.exports = function(io) {
           });
         }
       } catch (error) {
-        logger.error('Message reaction error:', error);
+        console.error('Message reaction error:', error);
         socket.emit('error', {
           message: error.message || '리액션 처리 중 오류가 발생했습니다.'
         });
@@ -454,7 +453,7 @@ module.exports = function(io) {
         });
 
       } catch (error) {
-        logger.error('Disconnect handling error:', error);
+        console.error('Disconnect handling error:', error);
       }
     });
 
@@ -473,7 +472,7 @@ module.exports = function(io) {
         socket.disconnect(true);
 
       } catch (error) {
-        logger.error('Force login error:', error);
+        console.error('Force login error:', error);
         socket.emit('error', {
           message: '세션 종료 중 오류가 발생했습니다.'
         });
@@ -575,7 +574,7 @@ module.exports = function(io) {
           },
           onError: (error) => {
             streamingSessions.delete(messageId);
-            logger.error('AI response error:', error);
+            console.error('AI response error:', error);
 
             io.to(room).emit('aiMessageError', {
               messageId,
@@ -592,7 +591,7 @@ module.exports = function(io) {
         });
       } catch (error) {
         streamingSessions.delete(messageId);
-        logger.error('AI service error:', error);
+        console.error('AI service error:', error);
         io.to(room).emit('aiMessageError', {
           messageId,
           error: error.message || 'AI 서비스 오류가 발생했습니다.',

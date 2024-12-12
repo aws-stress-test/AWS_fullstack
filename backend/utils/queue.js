@@ -1,6 +1,5 @@
 const Queue = require('bull');
 const { sentinelConfig } = require('../config/redis');
-const logger = require('./logger');
 
 const messageQueue = new Queue('messageQueue', {
   redis: {
@@ -40,28 +39,28 @@ messageQueue.process(8, async (job) => {
   try {
     return await job.data;
   } catch (error) {
-    logger.error('Message processing error:', error);
+    console.error('Message processing error:', error);
     throw error;
   }
 });
 
 // 이벤트 핸들러
 messageQueue.on('error', (error) => {
-  logger.error('Message queue error:', error);
+  console.error('Message queue error:', error);
 });
 
 messageQueue.on('failed', (job, error) => {
-  logger.error('Job failed:', job.id, error);
+  console.error('Job failed:', job.id, error);
 });
 
 messageQueue.on('completed', (job) => {
-  logger.debug('Job completed:', job.id);
+  console.log('Job completed:', job.id);
 });
 
 // 큐 상태 모니터링
 setInterval(async () => {
   const jobCounts = await messageQueue.getJobCounts();
-  logger.info('Queue status:', jobCounts);
+  console.log('Queue status:', jobCounts);
 }, 30000);
 
 // Redis Sentinel 연결 테스트
@@ -69,14 +68,14 @@ setInterval(async () => {
   try {
     const isReady = await messageQueue.isReady();
     if (isReady) {
-      logger.info('Message queue connected successfully.');
+      console.log('Message queue connected successfully.');
     }
 
     // 테스트 작업 추가
     const testJob = await messageQueue.add({ test: 'data' });
-    logger.info('Test job added:', testJob.id);
+    console.log('Test job added:', testJob.id);
   } catch (error) {
-    logger.error('Failed to connect message queue or add test job:', error);
+    console.error('Failed to connect message queue or add test job:', error);
   }
 })();
 

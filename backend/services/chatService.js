@@ -1,7 +1,6 @@
 const Message = require('../models/Message');
 const messageQueue = require('../utils/queue');
 const redisManager = require('../config/redis');
-const logger = require('../utils/logger');
 const User = require('../models/User');
 const File = require('../models/File');
 
@@ -40,7 +39,7 @@ class ChatService {
       
       return userData ? JSON.parse(userData) : null;
     } catch (error) {
-      logger.error('User cache error:', error);
+      console.error('User cache error:', error);
       return null;
     }
   }
@@ -68,7 +67,7 @@ class ChatService {
       
       return fileData ? JSON.parse(fileData) : null;
     } catch (error) {
-      logger.error('File cache error:', error);
+      console.error('File cache error:', error);
       return null;
     }
   }
@@ -87,7 +86,7 @@ class ChatService {
       
       return enrichedMessage;
     } catch (error) {
-      logger.error('Message enrichment error:', error);
+      console.error('Message enrichment error:', error);
       return message;
     }
   }
@@ -140,7 +139,7 @@ class ChatService {
       };
 
     } catch (error) {
-      logger.error('Message handling error:', error);
+      console.error('Message handling error:', error);
       throw error;
     }
   }
@@ -156,7 +155,7 @@ class ChatService {
         await this.flushMessageBuffer();
       }
     } catch (error) {
-      logger.error('handleBulkMessages error:', error);
+      console.error('handleBulkMessages error:', error);
       throw error;
     }
   }
@@ -167,7 +166,7 @@ class ChatService {
       const modifiedCount = await Message.markAsRead(messageIds, userId);
       return modifiedCount;
     } catch (error) {
-      logger.error('markMessagesAsRead error:', error);
+      console.error('markMessagesAsRead error:', error);
       throw error;
     }
   }
@@ -188,7 +187,7 @@ class ChatService {
       // 캐시 갱신 필요 시 여기서 처리
 
     } catch (error) {
-      logger.error('handleReaction error:', error);
+      console.error('handleReaction error:', error);
       throw error;
     }
   }
@@ -208,7 +207,7 @@ class ChatService {
       await redisManager.pubClient.setex(cacheKey, this.CACHE_TTL, JSON.stringify(enrichedMsg));
       return enrichedMsg;
     } catch (error) {
-      logger.error('getMessageById error:', error);
+      console.error('getMessageById error:', error);
       throw error;
     }
   }
@@ -221,7 +220,7 @@ class ChatService {
       if (!messages || messages.length < limit) {
         messages = await this.loadMessagesFromDB(roomId, before, limit);
         if (messages.length > 0) {
-          this.cacheMessages(roomId, messages).catch(err => logger.error('Cache rebuild failed:', err));
+          this.cacheMessages(roomId, messages).catch(err => console.error('Cache rebuild failed:', err));
         }
       }
   
@@ -231,7 +230,7 @@ class ChatService {
         oldestTimestamp: messages[messages.length - 1]?.timestamp
       };
     } catch (error) {
-      logger.error('Message loading error:', error);
+      console.error('Message loading error:', error);
       const fallbackMessages = await Message.findRoomMessages(roomId, before, limit);
       return {
         messages: fallbackMessages,
@@ -279,7 +278,7 @@ class ChatService {
         })
       );
     } catch (error) {
-      logger.error('Redis message loading error:', error);
+      console.error('Redis message loading error:', error);
       return null;
     }
   }
@@ -289,7 +288,7 @@ class ChatService {
       const messages = await Message.findRoomMessages(roomId, before, limit);
       return await Promise.all(messages.map(msg => this.enrichMessageData(msg)));
     } catch (error) {
-      logger.error('DB message loading error:', error);
+      console.error('DB message loading error:', error);
       throw error;
     }
   }
@@ -311,7 +310,7 @@ class ChatService {
     try {
       await pipeline.exec();
     } catch (error) {
-      logger.error('Message caching error:', error);
+      console.error('Message caching error:', error);
     }
   }
 
@@ -338,7 +337,7 @@ class ChatService {
       
       await pipeline.exec();
     } catch (error) {
-      logger.error('Message buffer flush error:', error);
+      console.error('Message buffer flush error:', error);
       this.messageBuffer.push(...messages);
     }
   }
@@ -348,7 +347,7 @@ class ChatService {
       try {
         return await Message.analyzeQueryPlan(roomId);
       } catch (error) {
-        logger.error('Query analysis error:', error);
+        console.error('Query analysis error:', error);
         return null;
       }
     }

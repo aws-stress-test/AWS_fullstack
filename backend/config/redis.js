@@ -1,6 +1,5 @@
 const Redis = require('ioredis');
-const Queue = require('bull');
-const logger = require('../utils/logger.js');
+const Queue = require('bull');  
 
 // Redis 설정 상수
 const REDIS_CONFIG = {
@@ -48,13 +47,13 @@ class RedisManager {
 
   // Failover 처리 메서드 추가
   handleFailover() {
-    logger.info('Redis Sentinel failover detected. Reconnecting...');
+    console.log('Redis Sentinel failover detected. Reconnecting...');
     this.connect()
       .then(() => {
-        logger.info('Reconnected to Redis after failover.');
+        console.log('Reconnected to Redis after failover.');
       })
       .catch((err) => {
-        logger.error('Failed to reconnect to Redis after failover:', err);
+        console.error('Failed to reconnect to Redis after failover:', err);
       });
   }
 
@@ -86,10 +85,10 @@ class RedisManager {
       // 메모리 정책 설정
       await this.setMemoryPolicy();
 
-      //logger.info('Redis Sentinel 연결 성공');
+      //console.log('Redis Sentinel 연결 성공');
       return { pubClient: this.pubClient, subClient: this.subClient };
     } catch (error) {
-      logger.error('Redis Sentinel 연결 실패:', error);
+      console.error('Redis Sentinel 연결 실패:', error);
       throw error;
     }
   }
@@ -106,12 +105,12 @@ class RedisManager {
         await this.pubClient.call(command, ...args);
       }
   
-      // logger.info('Redis 메모리 정책 설정 완료', {
+      // console.log('Redis 메모리 정책 설정 완료', {
       //   policy: REDIS_CONFIG.MEMORY_POLICY,
       //   limit: REDIS_CONFIG.MEMORY_LIMIT
       // });
     } catch (error) {
-      logger.error('Redis 메모리 정책 설정 실패:', error);
+      console.error('Redis 메모리 정책 설정 실패:', error);
       throw error;
     }
   }
@@ -149,25 +148,25 @@ class RedisManager {
         try {
           return await job.data;
         } catch (error) {
-          logger.error('Job processing error:', error);
+          console.error('Job processing error:', error);
           throw error;
         }
       });
 
       queue.on('error', error => {
-        logger.error(`Queue ${queueName} error:`, error);
+        console.error(`Queue ${queueName} error:`, error);
       });
 
       queue.on('failed', (job, error) => {
-        logger.error(`Job ${job.id} in queue ${queueName} failed:`, error);
+        console.error(`Job ${job.id} in queue ${queueName} failed:`, error);
       });
 
       this.queues.set(queueName, queue);
-      logger.info(`Queue ${queueName} created successfully`);
+      console.log(`Queue ${queueName} created successfully`);
       
       return queue;
     } catch (error) {
-      logger.error(`Failed to create queue ${queueName}:`, error);
+      console.error(`Failed to create queue ${queueName}:`, error);
       throw error;
     }
   }
@@ -177,7 +176,7 @@ class RedisManager {
     try {
       return await this.pubClient.get(key);
     } catch (error) {
-      logger.error('Redis cache get 실패:', error);
+      console.error('Redis cache get 실패:', error);
       return null;
     }
   }
@@ -187,7 +186,7 @@ class RedisManager {
       const stringValue = typeof value === 'object' ? JSON.stringify(value) : String(value);
       await this.pubClient.setex(key, ttl, stringValue);
     } catch (error) {
-      logger.error('Redis cache set 실패:', error);
+      console.error('Redis cache set 실패:', error);
       throw error;
     }
   }
@@ -196,7 +195,7 @@ class RedisManager {
     try {
       await this.pubClient.del(key);
     } catch (error) {
-      logger.error('Redis cache del 실패:', error);
+      console.error('Redis cache del 실패:', error);
     }
   }
 
@@ -204,7 +203,7 @@ class RedisManager {
     try {
       return await this.pubClient.keys(pattern);
     } catch (error) {
-      logger.error('Redis cache keys 실패:', error);
+      console.error('Redis cache keys 실패:', error);
       return [];
     }
   }
@@ -220,9 +219,9 @@ class RedisManager {
       const closePromises = Array.from(this.queues.values()).map(queue => queue.close());
       await Promise.all(closePromises);
       this.queues.clear();
-      logger.info('All queues closed successfully');
+      console.log('All queues closed successfully');
     } catch (error) {
-      logger.error('Failed to close queues:', error);
+      console.error('Failed to close queues:', error);
       throw error;
     }
   }

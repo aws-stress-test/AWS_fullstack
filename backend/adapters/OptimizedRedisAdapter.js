@@ -1,5 +1,4 @@
 const { createAdapter } = require('@socket.io/redis-adapter');
-const logger = require('../utils/logger');
 
 class OptimizedRedisAdapter {
   constructor(pubClient, subClient) {
@@ -17,7 +16,7 @@ class OptimizedRedisAdapter {
   }
 
   async handleFailover() {
-    logger.info('Redis Adapter Failover 처리 시작');
+    console.log('Redis Adapter Failover 처리 시작');
     try {
       // 기존 구독 정보 백업
       const roomsToResubscribe = new Set(this.subscribedRooms);
@@ -33,9 +32,9 @@ class OptimizedRedisAdapter {
         }
       }
 
-      logger.info('Redis Adapter Failover 처리 완료');
+      console.log('Redis Adapter Failover 처리 완료');
     } catch (error) {
-      logger.error('Redis Adapter Failover 처리 실패:', error);
+      console.error('Redis Adapter Failover 처리 실패:', error);
     }
   }
 
@@ -50,11 +49,11 @@ class OptimizedRedisAdapter {
 
       io.on('connection', this.handleConnection.bind(this));
 
-      logger.info('Redis Adapter 생성 완료');
+      console.log('Redis Adapter 생성 완료');
       return adapter;
 
     } catch (error) {
-      logger.error('Redis Adapter 생성 실패:', error);
+      console.error('Redis Adapter 생성 실패:', error);
       throw error;
     }
   }
@@ -71,12 +70,12 @@ class OptimizedRedisAdapter {
         )
       ]);
       
-      logger.info(`Socket ${socket.id} initialized successfully`);
+      console.log(`Socket ${socket.id} initialized successfully`);
       
       this.setupSocketListeners(socket);
       
     } catch (error) {
-      logger.error(`Socket ${socket.id} initialization failed:`, error);
+      console.error(`Socket ${socket.id} initialization failed:`, error);
       socket.disconnect(true);
     }
   }
@@ -85,12 +84,12 @@ class OptimizedRedisAdapter {
     const cleanup = () => {
       this.connectionPromises.delete(socket.id);
       this.handleDisconnect(socket.id);
-      logger.info(`Client disconnected: ${socket.id}`);
+      console.log(`Client disconnected: ${socket.id}`);
     };
 
     socket.on('disconnect', cleanup);
     socket.on('error', (error) => {
-      logger.error(`Socket ${socket.id} error:`, error);
+      console.error(`Socket ${socket.id} error:`, error);
       cleanup();
     });
   }
@@ -134,10 +133,10 @@ class OptimizedRedisAdapter {
         
         this.subscribedRooms.add(room);
         this.roomSubscriptionCache.set(room, true);
-        logger.info(`Subscribed to room ${room}`);
+        console.log(`Subscribed to room ${room}`);
         
       } catch (err) {
-        logger.error(`Failed to subscribe to room ${room}:`, err);
+        console.error(`Failed to subscribe to room ${room}:`, err);
         throw err;
       }
     }
@@ -165,9 +164,9 @@ class OptimizedRedisAdapter {
         await this.subClient.unsubscribe(room);
         this.subscribedRooms.delete(room);
         this.roomSubscriptionCache.delete(room);
-        logger.info(`Unsubscribed from room ${room}`);
+        console.log(`Unsubscribed from room ${room}`);
       } catch (err) {
-        logger.error(`Failed to unsubscribe from room ${room}:`, err);
+        console.error(`Failed to unsubscribe from room ${room}:`, err);
       }
     }
   }
@@ -186,10 +185,10 @@ class OptimizedRedisAdapter {
       this.subClient.unsubscribe(room)
         .then(() => {
           this.subscribedRooms.delete(room);
-          logger.info(`Unsubscribed from room ${room} after check`);
+          console.log(`Unsubscribed from room ${room} after check`);
         })
         .catch(err => {
-          logger.error(`Failed to unsubscribe from room ${room}:`, err);
+          console.error(`Failed to unsubscribe from room ${room}:`, err);
         });
     }
   }
@@ -207,10 +206,10 @@ class OptimizedRedisAdapter {
       this.subClient.unsubscribe(room)
         .then(() => {
           this.subscribedRooms.delete(room);
-          logger.info(`Unsubscribed from room ${room}`);
+          console.log(`Unsubscribed from room ${room}`);
         })
         .catch(err => {
-          logger.error(`Failed to unsubscribe from room ${room}:`, err);
+          console.error(`Failed to unsubscribe from room ${room}:`, err);
         });
     }
   }
