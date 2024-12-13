@@ -1,8 +1,7 @@
 module.exports = {
   apps: [{
     name: "frontend",
-    script: "npm",
-    args: "start",
+    script: "server.js",
     exec_mode: "fork",
     instances: 1,
     
