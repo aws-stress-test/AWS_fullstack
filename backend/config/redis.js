@@ -37,7 +37,6 @@ class RedisManager {
   constructor() {
     this.pubClient = null;
     this.subClient = null;
-    this.queues = new Map();
     this.defaultTTL = REDIS_CONFIG.DEFAULT_TTL;
   }
 
@@ -49,47 +48,35 @@ class RedisManager {
       await Promise.all([this.pubClient.connect(), this.subClient.connect()]);
       console.log("Redis Sentinel pubClient와 subClient가 연결되었습니다.");
 
-      // Sentinel 이벤트 리스너
-      this.pubClient.on("+failover-end", this.handleFailover.bind(this));
-      this.subClient.on("+failover-end", this.handleFailover.bind(this));
-
-      this.pubClient.on("+switch-master", (master) => {
-        console.log(`Master switched: ${JSON.stringify(master)}`);
+      this.pubClient.on("+switch-master", () => {
+        console.log("Master switched. Reconnecting...");
         this.connect();
       });
 
       await this.setMemoryPolicy();
-
-      return { pubClient: this.pubClient, subClient: this.subClient };
     } catch (error) {
       console.error("Redis Sentinel 연결 실패:", error);
       throw error;
     }
   }
 
-  handleFailover() {
-    console.log("Redis Sentinel failover detected. Reconnecting...");
-    this.connect()
-      .then(() => {
-        console.log("Reconnected to Redis after failover.");
-      })
-      .catch((err) => {
-        console.error("Failed to reconnect to Redis after failover:", err);
-      });
-  }
-
   async setMemoryPolicy() {
     try {
-      const commands = [
-        ["CONFIG", "SET", "maxmemory-policy", REDIS_CONFIG.MEMORY_POLICY],
-        ["CONFIG", "SET", "maxmemory", REDIS_CONFIG.MEMORY_LIMIT],
-        ["CONFIG", "SET", "appendonly", REDIS_CONFIG.APPEND_ONLY],
-      ];
-
-      for (const [command, ...args] of commands) {
-        await this.pubClient.call(command, ...args);
-      }
-
+      await this.pubClient.config(
+        "SET",
+        "maxmemory-policy",
+        REDIS_CONFIG.MEMORY_POLICY
+      );
+      await this.pubClient.config(
+        "SET",
+        "maxmemory",
+        REDIS_CONFIG.MEMORY_LIMIT
+      );
+      await this.pubClient.config(
+        "SET",
+        "appendonly",
+        REDIS_CONFIG.APPEND_ONLY
+      );
       console.log("Redis 메모리 정책 설정 완료");
     } catch (error) {
       console.error("Redis 메모리 정책 설정 실패:", error);
@@ -147,22 +134,12 @@ class RedisManager {
         return { isValid: false, message: "Session mismatch" };
       }
 
-      try {
-        await this.setCache(sessionKey, sessionData, this.defaultTTL);
-        console.log(`Session TTL refreshed for user ${userId}.`);
-      } catch (ttlError) {
-        console.warn(
-          `Failed to refresh TTL for session ${sessionId} of user ${userId}:`,
-          ttlError.stack || ttlError
-        );
-      }
+      await this.setCache(sessionKey, sessionData, this.defaultTTL);
+      console.log(`Session TTL refreshed for user ${userId}.`);
 
       return { isValid: true, message: "Session is valid" };
     } catch (error) {
-      console.error(
-        `Session validation failed for user ${userId}:`,
-        error.stack || error
-      );
+      console.error(`Session validation failed for user ${userId}:`, error);
       return { isValid: false, message: "Session validation error" };
     }
   }
@@ -174,27 +151,19 @@ class RedisManager {
   async getCache(key) {
     try {
       const data = await this.pubClient.get(key);
-      if (data) {
-        try {
-          return JSON.parse(data);
-        } catch {
-          return data;
-        }
-      }
-      return null;
+      return data ? JSON.parse(data) : null;
     } catch (error) {
-      console.error(`Redis cache get 실패 (key: ${key}):`, error);
+      console.error(`Redis getCache 실패: ${key}`, error);
       return null;
     }
   }
 
   async setCache(key, value, ttl = this.defaultTTL) {
     try {
-      const stringValue =
-        typeof value === "object" ? JSON.stringify(value) : String(value);
+      const stringValue = JSON.stringify(value);
       await this.pubClient.setex(key, ttl, stringValue);
     } catch (error) {
-      console.error(`Redis cache set 실패 (key: ${key}):`, error);
+      console.error(`Redis setCache 실패: ${key}`, error);
       throw error;
     }
   }
@@ -209,17 +178,8 @@ class RedisManager {
       }
       return false;
     } catch (error) {
-      console.error(`Redis cache del 실패 (key: ${key}):`, error);
+      console.error(`Redis delCache 실패: ${key}`, error);
       return false;
-    }
-  }
-
-  async getKeys(pattern) {
-    try {
-      return await this.pubClient.keys(pattern);
-    } catch (error) {
-      console.error(`Redis getKeys 실패 (pattern: ${pattern}):`, error);
-      throw error;
     }
   }
 
