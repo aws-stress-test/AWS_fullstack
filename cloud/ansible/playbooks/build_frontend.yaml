@@ -1,0 +1,114 @@
+---
+- name: Build and Deploy AWS Fullstack Application
+  hosts: front-master
+  gather_facts: false
+  vars:
+    app_dir: /home/ubuntu/AWS_fullstack/frontend
+    release_dir: /home/ubuntu/release
+    tmp_dir: ./tmp/release  # Changed to relative local path
+    health_check_url: http://localhost:3000/health
+    aws_s3_bucket: bw-cdn-s3
+    cloudfront_distribution_id: E1BTMTLQWFJU51
+
+  tasks:
+    - name: Clean up local temporary directory
+      file:
+        path: "{{ local_tmp_dir }}"
+        state: absent
+      delegate_to: localhost
+      run_once: true
+
+    - name: Fetch all branches
+      command: git fetch --all
+      args:
+        chdir: "{{ app_dir }}"
+
+    - name: Checkout release branch
+      command: git checkout release
+      args:
+        chdir: "{{ app_dir }}"
+
+    - name: Pull latest changes
+      command: git pull
+      args:
+        chdir: "{{ app_dir }}"
+
+    - name: Install dependencies
+      command: npm install
+      args:
+        chdir: "{{ app_dir }}"
+
+    - name: Build frontend
+      command: npm run build
+      args:
+        chdir: "{{ app_dir }}"
+
+    - name: Create local temporary directory
+      file:
+        path: "{{ tmp_dir }}"
+        state: directory
+        mode: '0755'
+      delegate_to: localhost  # Execute on local machine
+
+    - name: Copy standalone files to local
+      synchronize:
+        src: "{{ app_dir }}/.next/standalone/"
+        dest: "{{ tmp_dir }}"
+        mode: pull  # Pull files from remote to local
+
+    - name: Copy .next directory to local
+      synchronize:
+        src: "{{ app_dir }}/.next"
+        dest: "{{ tmp_dir }}"
+        mode: pull
+
+    - name: Copy public directory to local
+      synchronize:
+        src: "{{ app_dir }}/public"
+        dest: "{{ tmp_dir }}"
+        mode: pull
+
+    - name: Copy ecosystem config to local
+      fetch:  # Changed from copy to fetch
+        src: "{{ app_dir }}/ecosystem.config.js"
+        dest: "{{ tmp_dir }}/ecosystem.config.js"
+        flat: yes
+
+    - name: Check if AWS profile exists
+      shell: aws configure list-profiles | grep -q "^ktb$"
+      register: aws_profile_check
+      ignore_errors: true
+      delegate_to: localhost  # Execute on local machine
+
+    - name: Set AWS profile fact
+      set_fact:
+        aws_profile: "{% if aws_profile_check.rc == 0 %}--profile ktb{% else %}{% endif %}"
+
+    - name: Sync static files to S3
+      command: >
+        aws s3 sync {{ app_dir }}/.next/static s3://{{ aws_s3_bucket }}/_next/static 
+        --exclude ".DS_Store"
+      args:
+        chdir: "{{ app_dir }}"
+
+    - name: Create CloudFront invalidation
+      command: >
+        aws cloudfront create-invalidation 
+        --distribution-id {{ cloudfront_distribution_id }} 
+        --paths "/*"
+
+    - name: Start application on master
+      command: pm2 start ecosystem.config.js --env prod
+      args:
+        chdir: "{{ app_dir }}"
+
+    - name: Wait for health check
+      uri:
+        url: "{{ health_check_url }}"
+        return_content: yes
+        status_code: 200
+      register: health_check
+      retries: 3
+      delay: 5
+      until: health_check.status == 200
+      failed_when: health_check.status != 200

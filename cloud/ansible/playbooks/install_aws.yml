@@ -1,6 +1,6 @@
 ---
 - name: Install AWS
-  hosts: earsToWorld
+  hosts: front-master
   vars_files:
   - ../inventory/group_vars/aws_deploy.yml
   roles:

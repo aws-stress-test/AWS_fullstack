@@ -1,0 +1,22 @@
+---
+- hosts: backend-worker
+  tasks:
+    - name: Change directory to backend
+      shell: cd /home/ubuntu/AWS_fullstack/backend
+
+    - name: Switch to release branch and pull latest
+      shell: |
+        git checkout release
+        git pull origin release
+      args:
+        chdir: /home/ubuntu/AWS_fullstack/backend
+
+    - name: Install npm dependencies
+      shell: npm install
+      args:
+        chdir: /home/ubuntu/AWS_fullstack/backend
+
+    - name: Restart server with PM2
+      shell: pm2 restart server.js
+      args:
+        chdir: /home/ubuntu/AWS_fullstack/backend
