@@ -30,3 +30,5 @@ Thumbs.db
 install.sh
 
 */ansible.log
+
+**/install_node.yaml

@@ -11,20 +11,13 @@
     cloudfront_distribution_id: E1BTMTLQWFJU51
 
   tasks:
-    - name: Clean up local temporary directory
-      file:
-        path: "{{ local_tmp_dir }}"
-        state: absent
-      delegate_to: localhost
-      run_once: true
-
     - name: Fetch all branches
       command: git fetch --all
       args:
         chdir: "{{ app_dir }}"
 
     - name: Checkout release branch
-      command: git checkout release
+      command: git checkout release-0933
       args:
         chdir: "{{ app_dir }}"
 
