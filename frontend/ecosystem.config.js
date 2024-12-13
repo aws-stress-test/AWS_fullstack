@@ -15,8 +15,11 @@ module.exports = {
     },
 
     wait_ready: true,
-    kill_timeout: 5000,
+    listen_timeout: 70000,      // 추가: 앱 시작 시 ready 이벤트 대기 시간
+    kill_timeout: 30000,        // 수정: 5000 -> 30000으로 증가
+    max_restarts: 10,           // 추가: 최대 재시작 횟수 제한
+    restart_delay: 4000,        // 추가: 재시작 간 지연 시간
     autorestart: true,
     watch: false,
   }]
-}; 
+};
