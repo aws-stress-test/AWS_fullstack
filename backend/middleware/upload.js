@@ -9,12 +9,12 @@ const { S3Client } = require('@aws-sdk/client-s3');
 
 // AWS S3 설정
 const s3Client = new S3Client({
-  region: process.env.AWS_REGION,
+  region: "ap-northeast-2",
   credentials: {
     accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY
+    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
   }
-});
+}); 
 
 // MIME 타입과 확장자 매핑
 const ALLOWED_TYPES = {
