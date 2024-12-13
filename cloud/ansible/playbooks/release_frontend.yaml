@@ -38,10 +38,10 @@
       command: pm2 start ecosystem.config.js --env prod
       args:
         chdir: "{{ release_dir }}"
-        
-    - name: Clean up local temporary directory
-      file:
-        path: "{{ local_tmp_dir }}"
-        state: absent
-      delegate_to: localhost
-      run_once: true
+
+    # - name: Clean up local temporary directory
+    #   file:
+    #     path: "{{ local_tmp_dir }}"
+    #     state: absent
+    #   delegate_to: localhost
+    #   run_once: true
