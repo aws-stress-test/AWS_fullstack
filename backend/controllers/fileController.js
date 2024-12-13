@@ -91,21 +91,17 @@ exports.uploadFile = async (req, res) => {
       });
     }
 
-    const safeFilename = generateSafeFilename(req.file.originalname);
-    const currentPath = req.file.path;
-    const newPath = path.join(uploadDir, safeFilename);
-
+    // S3에 업로드된 파일 정보 사용
     const file = new File({
-      filename: safeFilename,
+      filename: req.file.key, // S3에서 사용되는 파일 키
       originalname: req.file.originalname,
       mimetype: req.file.mimetype,
       size: req.file.size,
       user: req.user.id,
-      path: newPath
+      path: req.file.location // S3 파일 URL
     });
 
     await file.save();
-    await fsPromises.rename(currentPath, newPath);
 
     res.status(200).json({
       success: true,
@@ -116,19 +112,14 @@ exports.uploadFile = async (req, res) => {
         originalname: file.originalname,
         mimetype: file.mimetype,
         size: file.size,
-        uploadDate: file.uploadDate
+        uploadDate: file.uploadDate,
+        url: file.path // S3 URL 추가
       }
     });
 
   } catch (error) {
     console.error('File upload error:', error);
-    if (req.file?.path) {
-      try {
-        await fsPromises.unlink(req.file.path);
-      } catch (unlinkError) {
-        console.error('Failed to delete uploaded file:', unlinkError);
-      }
-    }
+    // S3 업로드 실패 시 multer-s3가 자동으로 정리하므로 별도의 파일 삭제 로직 불필요
     res.status(500).json({
       success: false,
       message: '파일 업로드 중 오류가 발생했습니다.',
