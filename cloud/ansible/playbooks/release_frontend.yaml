@@ -1,5 +1,5 @@
 - name: Deploy to worker nodes
-  hosts: front-worker
+  hosts: front-error
   gather_facts: false
   vars:
     release_dir: /home/ubuntu/release

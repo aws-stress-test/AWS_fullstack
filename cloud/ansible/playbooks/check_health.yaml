@@ -1,0 +1,66 @@
+---
+- name: Health Check for Front and Backend Workers
+  hosts: all
+  gather_facts: no
+  vars:
+    front_port: 3000
+    back_port: 5000
+    failed_hosts: []
+    
+  tasks:
+    - name: Check if front-worker is running on port 3000
+      uri:
+        url: "http://{{ ansible_host }}:{{ front_port }}/health"
+        method: GET
+        return_content: yes
+        status_code: 200
+        validate_certs: no
+        timeout: 5
+      register: front_health
+      ignore_errors: yes
+      when: "'front-worker' in group_names"
+
+    - name: Record front-worker failure
+      set_fact:
+        failed_hosts: "{{ failed_hosts + [{'host': ansible_host, 'port': front_port, 'status': front_health.status | default(-1), 'msg': front_health.msg | default('Unknown error')}] }}"
+      when: 
+        - "'front-worker' in group_names"
+        - front_health.status is defined
+        - front_health.status != 200
+
+    - name: Check if backend_worker is running on port 5000
+      uri:
+        url: "http://{{ ansible_host }}:{{ back_port }}/health"
+        method: GET
+        return_content: yes
+        status_code: 200
+        validate_certs: no
+        timeout: 5
+      register: back_health
+      ignore_errors: yes
+      when: "'backend-worker' in group_names"
+
+    - name: Record backend-worker failure
+      set_fact:
+        failed_hosts: "{{ failed_hosts + [{'host': ansible_host, 'port': back_port, 'status': back_health.status | default(-1), 'msg': back_health.msg | default('Unknown error')}] }}"
+      when:
+        - "'backend-worker' in group_names"
+        - back_health.status is defined
+        - back_health.status != 200
+
+    - name: Display all health check failures
+      debug:
+        msg: |
+          Health Check Failures:
+          {% for failure in failed_hosts %}
+          - Host: {{ failure.host }}
+            Port: {{ failure.port }}
+            Status: {{ failure.status }}
+            Error: {{ failure.msg }}
+          {% endfor %}
+      when: failed_hosts | length > 0
+
+    - name: Fail if any health checks failed
+      fail:
+        msg: "Some health checks failed. Check the details above."
+      when: failed_hosts | length > 0

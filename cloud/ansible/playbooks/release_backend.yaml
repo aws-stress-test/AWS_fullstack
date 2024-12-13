@@ -6,8 +6,8 @@
 
     - name: Switch to release branch and pull latest
       shell: |
-        git checkout release
-        git pull origin release
+        git checkout release-0933
+        git pull origin release-0933
       args:
         chdir: /home/ubuntu/AWS_fullstack/backend
 

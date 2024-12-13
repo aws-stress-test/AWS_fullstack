@@ -31,6 +31,11 @@
       args:
         chdir: "{{ app_dir }}"
 
+    - name: Install dependencies
+      command: npm install @aws-sdk/client-s3 multer multer-s3
+      args:
+        chdir: "{{ app_dir }}"
+
     - name: Build frontend
       command: npm run build
       args:
