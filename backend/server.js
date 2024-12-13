@@ -126,6 +126,26 @@ app.get("/health", (req, res) => {
     },
   });
 
+  io.on("connection", (socket) => {
+    console.log("A user connected:", socket.id);
+
+    socket.on("sendMessage", (data) => {
+      const { roomId, messageContent, senderId } = data;
+
+      const message = {
+        roomId,
+        type: "text",
+        content: messageContent,
+        sender: senderId,
+        timestamp: Date.now(),
+      };
+
+      // 메시지를 방에 있는 모든 사용자에게 전송
+      io.to(roomId).emit("message", message);
+      console.log("Message broadcasted:", message);
+    });
+  });
+
   // Redis pub/sub 채널 설정
   const PARTICIPANT_UPDATE_CHANNEL = "participant:updates";
 

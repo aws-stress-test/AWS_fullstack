@@ -483,14 +483,16 @@ export const useChatRoom = () => {
 
     const handleConnect = () => {
       if (!mountedRef.current) return;
+
       console.log("Socket connected successfully");
       setConnectionStatus("connected");
       setConnected(true);
 
       // 이전 메시지 이벤트 리스너
       socketRef.current.on("previousMessages", (response) => {
-        console.log("Previous messages received:", response);
         try {
+          console.log("Previous messages received:", response);
+
           if (!response || typeof response !== "object") {
             throw new Error("Invalid response format");
           }
@@ -507,8 +509,9 @@ export const useChatRoom = () => {
 
       // 새 메시지 이벤트 리스너
       socketRef.current.on("message", (newMessage) => {
-        console.log("New message received:", newMessage);
         if (!newMessage || !newMessage._id) return;
+
+        console.log("New message received:", newMessage);
 
         setMessages((prevMessages) => {
           if (prevMessages.some((msg) => msg._id === newMessage._id)) {
@@ -517,12 +520,13 @@ export const useChatRoom = () => {
           return [...prevMessages, newMessage];
         });
 
+        // 하단으로 스크롤
         if (isNearBottom) {
-          scrollToBottom(); // 하단으로 스크롤
+          scrollToBottom();
         }
       });
 
-      // 초기 방 설정
+      // 방 설정 초기화
       if (
         router.query.room &&
         !setupCompleteRef.current &&
@@ -530,10 +534,13 @@ export const useChatRoom = () => {
         !isInitialized
       ) {
         socketInitializedRef.current = true;
-        setupRoom().catch((error) => {
-          console.error("Setup room error:", error);
-          setError("채팅방 연결에 실패했습니다.");
-        });
+
+        setupRoom()
+          .then(() => console.log("Room setup completed"))
+          .catch((error) => {
+            console.error("Setup room error:", error);
+            setError("채팅방 연결에 실패했습니다.");
+          });
       }
     };
 
@@ -543,10 +550,12 @@ export const useChatRoom = () => {
       setConnected(false);
     };
 
+    // Socket 연결 및 이벤트 리스너 설정
     socketRef.current.on("connect", handleConnect);
     socketRef.current.on("disconnect", handleDisconnect);
 
     return () => {
+      // Socket 리스너 해제
       if (socketRef.current) {
         socketRef.current.off("connect", handleConnect);
         socketRef.current.off("disconnect", handleDisconnect);
@@ -562,6 +571,9 @@ export const useChatRoom = () => {
     setConnectionStatus,
     processMessages,
     setError,
+    isNearBottom,
+    scrollToBottom,
+    isInitialized,
   ]);
 
   // Component initialization and cleanup
