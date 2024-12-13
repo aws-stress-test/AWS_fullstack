@@ -64,6 +64,14 @@ const processBulkMessages = async (messages) => {
     // MongoDB에 벌크 삽입
     const savedMessages = await Message.insertMany(messagesForDB);
 
+    // MongoDB 결과를 Map으로 변환
+    const messageMap = new Map(
+      savedMessages.map((msg) => [
+        `${msg.room}-${msg.timestamp.getTime()}`,
+        msg._id,
+      ])
+    );
+
     // Redis에 캐싱
     const pipeline = redisManager.pubClient.multi();
     const roomGroups = messages.reduce((acc, msg) => {
@@ -77,21 +85,21 @@ const processBulkMessages = async (messages) => {
     for (const [roomId, roomMessages] of Object.entries(roomGroups)) {
       const key = `messages:${roomId}`;
       roomMessages.forEach((msg) => {
+        const messageId = messageMap.get(`${msg.room}-${msg.timestamp}`);
         pipeline.zadd(
           key,
           msg.timestamp,
-          JSON.stringify({
-            ...msg,
-            _id: savedMessages.find(
-              (m) =>
-                m.room === msg.room && m.timestamp.getTime() === msg.timestamp
-            )?._id,
-          })
+          JSON.stringify({ ...msg, _id: messageId })
         );
       });
     }
 
-    await pipeline.exec();
+    const results = await pipeline.exec();
+    const failedCommands = results.filter(([err]) => err);
+    if (failedCommands.length > 0) {
+      logger.error("Redis pipeline errors:", failedCommands);
+    }
+
     return savedMessages;
   } catch (error) {
     logger.error("Bulk message processing error:", { error, messages });
@@ -128,6 +136,14 @@ setInterval(async () => {
 }, 10000);
 
 // Redis 상태 체크
+setInterval(() => {
+  const pubStatus = redisManager.pubClient.status;
+  const subStatus = redisManager.subClient.status;
+  console.log("Redis pubClient status:", pubStatus);
+  console.log("Redis subClient status:", subStatus);
+}, 30000);
+
+// Redis 초기화 및 테스트 Job 추가
 (async () => {
   try {
     await redisManager.connect();
