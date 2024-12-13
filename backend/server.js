@@ -1,15 +1,12 @@
 require('dotenv').config();
-const mongoose = require('mongoose');
 const express = require('express');
 const cors = require('cors');
+const mongoose = require('mongoose');
 const http = require('http');
 const socketIO = require('socket.io');
-const { createAdapter } = require('@socket.io/redis-adapter');
 const path = require('path');
 const { router: roomsRouter, initializeSocket } = require('./routes/api/rooms');
 const routes = require('./routes');
-const redisManager = require('./config/redis');
-
 
 const app = express();
 const server = http.createServer(app);
@@ -55,9 +52,6 @@ app.options('*', cors(corsOptions));
 // 정적 파일 제공
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
-// API 라우트 마운트
-app.use('/api', routes);
-
 // 요청 로깅
 if (process.env.NODE_ENV === 'development') {
   app.use((req, res, next) => {
@@ -75,87 +69,15 @@ app.get('/health', (req, res) => {
   });
 });
 
+// API 라우트 마운트
+app.use('/api', routes);
 
-(async() => {
-  await redisManager.connect();
+// Socket.IO 설정
+const io = socketIO(server, { cors: corsOptions });
+require('./sockets/chat')(io);
 
-  // Socket.IO 설정 최적화
-  const io = socketIO(server, {
-    cors: corsOptions,
-    pingTimeout: 300000,        
-    pingInterval: 15000,        
-    transports: ['websocket', 'polling'],  
-    allowUpgrades: true,
-    reconnection: true,
-    reconnectionAttempts: 10,
-    reconnectionDelay: 1000,    
-    reconnectionDelayMax: 5000,
-    
-    perMessageDeflate: {
-      threshold: 1024,
-      zlibInflateFilter: () => true,
-      memLevel: 3,
-      level: 2,
-      chunkSize: 8 * 1024,
-      windowBits: 14  
-    },
-    
-    maxHttpBufferSize: 3e6,
-    connectTimeout: 45000,
-    
-    adapter: createAdapter(
-      redisManager.pubClient,
-      redisManager.subClient,
-      {
-        publishOnSpecificResponseOnly: true,
-        requestsTimeout: 60000,
-        publishRetries: 10,
-        key: `socket.io`,
-        publishTimeout: 10000,
-        heartbeatInterval: 15000,
-        heartbeatTimeout: 60000
-      }
-    ),
-
-    upgradeTimeout: 10000,
-    serveClient: false,
-    allowEIO3: true,
-    rememberUpgrade: true,
-    destroyUpgrade: true,
-    destroyUpgradeTimeout: 5000,
-    cors: {
-      ...corsOptions,
-      preflightContinue: false,
-      optionsSuccessStatus: 204
-    }
-  });
-
-  // Redis pub/sub 채널 설정
-  const redisPubClient = redisManager.pubClient;
-  const redisSubClient = redisManager.subClient;
-
-  // 참여자 업데이트를 위한 Redis 채널
-  const PARTICIPANT_UPDATE_CHANNEL = 'participant:updates';
-
-  redisSubClient.subscribe(PARTICIPANT_UPDATE_CHANNEL);
-  redisSubClient.on('message', (channel, message) => {
-    if (channel === PARTICIPANT_UPDATE_CHANNEL) {
-      try {
-        const { roomId, participants } = JSON.parse(message);
-        io.to(roomId).emit('participantsUpdate', participants);
-        io.emit('roomUpdated', { _id: roomId, participants });
-      } catch (error) {
-        console.error('Redis message parsing error:', error);
-      }
-    }
-  });
-  require('./sockets/chat')(io);
-  // Socket.IO 객체 전달
-  initializeSocket(io);
-
-  // Express 앱에서 Socket.IO 접근 가능하도록 설정
-  app.set('io', io);
-})();
+// Socket.IO 객체 전달
+initializeSocket(io);
 
 // 404 에러 핸들러
 app.use((req, res) => {
@@ -177,10 +99,8 @@ app.use((err, req, res, next) => {
   });
 });
 
-console.log('MONGO_URI:', process.env.MONGO_URI);
-
 // 서버 시작
-mongoose.connect(process.env.MONGO_URI || 'mongodb://localhost:27017/bootcampchat')
+mongoose.connect(process.env.MONGO_URI)
   .then(() => {
     console.log('MongoDB Connected');
     server.listen(PORT, '0.0.0.0', () => {

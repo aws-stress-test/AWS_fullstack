@@ -182,6 +182,7 @@ exports.updateProfile = async (req, res) => {
 
     user.name = name.trim();
     await user.save();
+
     res.json({
       success: true,
       message: '프로필이 업데이트되었습니다.',
