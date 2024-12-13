@@ -1,12 +1,11 @@
-import { useState, useRef, useCallback, useEffect, useMemo } from "react";
+import { useState, useRef, useCallback, useEffect } from 'react';
 
 export const useScrollHandling = (socketRef, router, messages = []) => {
   const [isNearBottom, setIsNearBottom] = useState(true);
   const [hasMoreMessages, setHasMoreMessages] = useState(true);
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [initialScrollDone, setInitialScrollDone] = useState(false);
-  const [isLoadingPreviousMessages, setIsLoadingPreviousMessages] =
-    useState(false);
+  const [isLoadingPreviousMessages, setIsLoadingPreviousMessages] = useState(false);
 
   const messagesEndRef = useRef(null);
   const previousScrollHeightRef = useRef(0);
@@ -22,19 +21,9 @@ export const useScrollHandling = (socketRef, router, messages = []) => {
   const logDebug = useCallback((action, data) => {
     console.debug(`[ScrollHandling] ${action}:`, {
       ...data,
-      timestamp: new Date().toISOString(),
+      timestamp: new Date().toISOString()
     });
   }, []);
-
-  const constants = useMemo(
-    () => ({
-      SCROLL_BOTTOM_THRESHOLD: 100,
-      SCROLL_TOP_THRESHOLD: 30,
-      SCROLL_TIMEOUT: 150,
-      SOCKET_TIMEOUT: 10000,
-    }),
-    []
-  );
 
   const checkScrollPosition = useCallback(() => {
     if (!messagesEndRef.current) return { isAtBottom: true, isAtTop: false };
@@ -42,78 +31,70 @@ export const useScrollHandling = (socketRef, router, messages = []) => {
     const container = messagesEndRef.current;
     const { scrollTop, scrollHeight, clientHeight } = container;
     const distanceFromBottom = scrollHeight - (scrollTop + clientHeight);
-    const isAtBottom = distanceFromBottom < constants.SCROLL_BOTTOM_THRESHOLD;
-    const isAtTop = scrollTop < constants.SCROLL_TOP_THRESHOLD;
+    const isAtBottom = distanceFromBottom < 100;
+    const isAtTop = scrollTop < 30;
 
     return { isAtBottom, isAtTop, scrollTop, scrollHeight, clientHeight };
-  }, [constants]);
+  }, []);
 
-  const scrollToBottom = useCallback(
-    (behavior = "smooth") => {
-      // 과거 메시지 로딩 중에는 스크롤 하단 이동 방지
-      if (isLoadingPreviousMessages) {
-        return;
+  const scrollToBottom = useCallback((behavior = 'smooth') => {
+    // 과거 메시지 로딩 중에는 스크롤 하단 이동 방지
+    if (isLoadingPreviousMessages) {
+      return;
+    }
+
+    if (!messagesEndRef.current) return;
+
+    requestAnimationFrame(() => {
+      try {
+        const container = messagesEndRef.current;
+        if (!container) return;
+
+        const { scrollHeight, clientHeight } = container;
+        const maxScrollTop = scrollHeight - clientHeight;
+
+        container.scrollTo({
+          top: maxScrollTop,
+          behavior: behavior === 'auto' ? 'auto' : 'smooth'
+        });
+
+        logDebug('scrollToBottom', {
+          scrollHeight,
+          clientHeight,
+          maxScrollTop,
+          behavior,
+          isLoadingPrevious: isLoadingPreviousMessages
+        });
+      } catch (error) {
+        console.error('Scroll error:', error);
       }
+    });
+  }, [isLoadingPreviousMessages, logDebug]);
 
-      if (!messagesEndRef.current) return;
-
-      requestAnimationFrame(() => {
-        try {
-          const container = messagesEndRef.current;
-          if (!container) return;
-
-          const { scrollHeight, clientHeight } = container;
-          const maxScrollTop = scrollHeight - clientHeight;
-
-          container.scrollTo({
-            top: maxScrollTop,
-            behavior: behavior === "auto" ? "auto" : "smooth",
-          });
-
-          logDebug("scrollToBottom", {
-            scrollHeight,
-            clientHeight,
-            maxScrollTop,
-            behavior,
-            isLoadingPrevious: isLoadingPreviousMessages,
-          });
-        } catch (error) {
-          console.error("Scroll error:", error);
-        }
-      });
-    },
-    [isLoadingPreviousMessages, logDebug]
-  );
-
-  const tryLoadMoreMessages = useCallback(async () => {
-    if (
-      !hasMoreMessages ||
-      loadingMessages ||
-      isLoadingRef.current ||
-      loadMoreTriggeredRef.current
-    ) {
-      logDebug("loadMore prevented", {
+  const tryLoadMoreMessages = useCallback(async () => {  
+    if (!hasMoreMessages || loadingMessages || isLoadingRef.current || loadMoreTriggeredRef.current) {
+      logDebug('loadMore prevented', {
         hasMoreMessages,
         loadingMessages,
         isLoading: isLoadingRef.current,
-        loadMoreTriggered: loadMoreTriggeredRef.current,
+        loadMoreTriggered: loadMoreTriggeredRef.current
       });
       return;
     }
 
     try {
       if (!socketRef?.current?.connected) {
-        throw new Error("Socket not connected");
+        throw new Error('Socket not connected');
       }
-
+      
       const container = messagesEndRef.current;
       if (!container) return;
-
+      
       // 이전 메시지 로딩 상태 설정
       setIsLoadingPreviousMessages(true);
       isLoadingRef.current = true;
       loadMoreTriggeredRef.current = true;
-
+      
       // 현재 스크롤 위치와 높이 저장
       previousScrollHeightRef.current = container.scrollHeight;
       previousScrollTopRef.current = container.scrollTop;
@@ -133,16 +114,16 @@ export const useScrollHandling = (socketRef, router, messages = []) => {
 
       // Socket.IO 이벤트 emit 및 응답 대기
       const responsePromise = new Promise((resolve, reject) => {
-        socketRef.current.emit("fetchPreviousMessages", {
+        socketRef.current.emit('fetchPreviousMessages', {
           roomId: router?.query?.room,
-          before: firstMessage.timestamp,
+          before: firstMessage.timestamp
         });
 
-        socketRef.current.once("previousMessagesLoaded", (data) => {
+        socketRef.current.once('previousMessagesLoaded', (data) => {
           resolve(data);
         });
 
-        socketRef.current.once("error", (error) => {
+        socketRef.current.once('error', (error) => {
           setIsLoadingPreviousMessages(false);
           reject(error);
         });
@@ -150,13 +131,14 @@ export const useScrollHandling = (socketRef, router, messages = []) => {
         // 타임아웃 설정
         setTimeout(() => {
           setIsLoadingPreviousMessages(false);
-          reject(new Error("Timeout loading messages"));
-        }, constants.SOCKET_TIMEOUT);
+          reject(new Error('Timeout loading messages'));
+        }, 10000);
       });
 
       await responsePromise;
+
     } catch (error) {
-      console.error("Load more error:", error);
+      console.error('Load more error:', error);
       setIsLoadingPreviousMessages(false);
       isLoadingRef.current = false;
       loadMoreTriggeredRef.current = false;
@@ -168,60 +150,14 @@ export const useScrollHandling = (socketRef, router, messages = []) => {
     messages,
     socketRef,
     router?.query?.room,
-    setLoadingMessages,
-    constants,
+    setLoadingMessages
   ]);
 
-  const handleScrollTimeout = useCallback(() => {
-    console.log("Scroll timeout triggered");
-
-    const container = messagesEndRef.current;
-    if (!container) {
-      console.log("No container in timeout");
-      return;
-    }
-
-    const { scrollTop, scrollHeight, clientHeight } = container;
-    const isAtBottom =
-      scrollHeight - (scrollTop + clientHeight) <
-      constants.SCROLL_BOTTOM_THRESHOLD;
-    const isAtTop = scrollTop < constants.SCROLL_TOP_THRESHOLD;
-
-    console.log("Scroll position:", {
-      scrollTop,
-      scrollHeight,
-      clientHeight,
-      isAtTop,
-      isAtBottom,
-    });
-
-    setIsNearBottom(isAtBottom);
-
-    if (isAtTop) {
-      console.log("Is at top, checking conditions:", {
-        hasMoreMessages,
-        loadingMessages,
-        isLoading: isLoadingRef.current,
-        loadMoreTriggered: loadMoreTriggeredRef.current,
-      });
-
-      if (
-        hasMoreMessages &&
-        !loadingMessages &&
-        !isLoadingRef.current &&
-        !loadMoreTriggeredRef.current
-      ) {
-        console.log("Calling tryLoadMoreMessages");
-        tryLoadMoreMessages();
-      }
-    }
-  }, [constants, hasMoreMessages, loadingMessages, tryLoadMoreMessages]);
-
   const handleScroll = useCallback(() => {
-    console.log("Scroll event triggered");
+    console.log('Scroll event triggered'); // 스크롤 이벤트 확인용 로그
 
     if (!messagesEndRef.current) {
-      console.log("No messagesEndRef");
+      console.log('No messagesEndRef');
       return;
     }
 
@@ -229,19 +165,49 @@ export const useScrollHandling = (socketRef, router, messages = []) => {
       clearTimeout(scrollTimeoutRef.current);
     }
 
-    scrollTimeoutRef.current = setTimeout(
-      handleScrollTimeout,
-      constants.SCROLL_TIMEOUT
-    );
-  }, [handleScrollTimeout, constants]);
+    scrollTimeoutRef.current = setTimeout(() => {
+      console.log('Scroll timeout triggered'); // 타임아웃 실행 확인
 
+      const container = messagesEndRef.current;
+      if (!container) {
+        console.log('No container in timeout');
+        return;
+      }
+
+      const { scrollTop, scrollHeight, clientHeight } = container;
+      const isAtBottom = scrollHeight - (scrollTop + clientHeight) < 100;
+      const isAtTop = scrollTop < 30;
+
+      console.log('Scroll position:', { // 스크롤 위치 확인
+        scrollTop,
+        scrollHeight,
+        clientHeight,
+        isAtTop,
+        isAtBottom
+      });
+
+      setIsNearBottom(isAtBottom);
+
+      if (isAtTop) {
+        console.log('Is at top, checking conditions:', { // 조건 확인
+          hasMoreMessages,
+          loadingMessages,
+          isLoading: isLoadingRef.current,
+          loadMoreTriggered: loadMoreTriggeredRef.current
+        });
+
+        if (hasMoreMessages && !loadingMessages && !isLoadingRef.current && !loadMoreTriggeredRef.current) {
+          console.log('Calling tryLoadMoreMessages'); // 함수 호출 확인
+          tryLoadMoreMessages();
+        }
+      }
+    }, 150);
+  }, [hasMoreMessages, loadingMessages, tryLoadMoreMessages, logDebug]);
+  
   // Handle new messages
   useEffect(() => {
     const currentMessageCount = messages?.length || 0;
-    if (
-      currentMessageCount > lastMessageCountRef.current &&
-      !isLoadingPreviousMessages
-    ) {
+    if (currentMessageCount > lastMessageCountRef.current && !isLoadingPreviousMessages) {
       if (isNearBottom) {
         scrollToBottom();
       }
@@ -251,22 +217,12 @@ export const useScrollHandling = (socketRef, router, messages = []) => {
 
   // Initial scroll setup
   useEffect(() => {
-    if (
-      !initialScrollDone &&
-      messages?.length > 0 &&
-      !isLoadingPreviousMessages
-    ) {
-      scrollToBottom("auto");
+    if (!initialScrollDone && messages?.length > 0 && !isLoadingPreviousMessages) {
+      scrollToBottom('auto');
       setInitialScrollDone(true);
-      logDebug("initialScroll");
+      logDebug('initialScroll');
     }
-  }, [
-    messages?.length,
-    initialScrollDone,
-    scrollToBottom,
-    isLoadingPreviousMessages,
-    logDebug,
-  ]);
+  }, [messages?.length, initialScrollDone, scrollToBottom, isLoadingPreviousMessages, logDebug]);
 
   // Restore scroll position after loading more messages
   useEffect(() => {
@@ -283,20 +239,20 @@ export const useScrollHandling = (socketRef, router, messages = []) => {
           const newScrollHeight = container.scrollHeight;
           const heightDiff = newScrollHeight - previousScrollHeightRef.current;
           const newScrollTop = previousScrollTopRef.current + heightDiff;
-
-          logDebug("scroll restoration", {
+          
+          logDebug('scroll restoration', {
             previousHeight: previousScrollHeightRef.current,
             newHeight: newScrollHeight,
             heightDiff,
             previousScrollTop: previousScrollTopRef.current,
             newScrollTop,
-            isLoadingPrevious: isLoadingPreviousMessages,
+            isLoadingPrevious: isLoadingPreviousMessages
           });
 
           // isLoadingPreviousMessages가 true일 때만 스크롤 위치 복원
           if (isLoadingPreviousMessages) {
             const originalScrollBehavior = container.style.scrollBehavior;
-            container.style.scrollBehavior = "auto";
+            container.style.scrollBehavior = 'auto';
             container.scrollTop = newScrollTop;
             requestAnimationFrame(() => {
               container.style.scrollBehavior = originalScrollBehavior;
@@ -309,13 +265,14 @@ export const useScrollHandling = (socketRef, router, messages = []) => {
           scrollPositionRef.current = newScrollTop;
           isLoadingRef.current = false;
           loadMoreTriggeredRef.current = false;
-
+          
           // 모든 작업이 완료된 후 isLoadingPreviousMessages 상태 변경
           setTimeout(() => {
             setIsLoadingPreviousMessages(false);
           }, 100);
+
         } catch (error) {
-          console.error("Scroll restoration error:", error);
+          console.error('Scroll restoration error:', error);
           isLoadingRef.current = false;
           loadMoreTriggeredRef.current = false;
           setIsLoadingPreviousMessages(false);
@@ -356,7 +313,7 @@ export const useScrollHandling = (socketRef, router, messages = []) => {
     setLoadingMessages,
     setInitialScrollDone,
     setIsNearBottom,
-    isLoadingPreviousMessages,
+    isLoadingPreviousMessages
   };
 };
 
