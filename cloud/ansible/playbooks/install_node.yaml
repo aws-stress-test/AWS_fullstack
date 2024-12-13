@@ -1,0 +1,71 @@
+---
+- name: Install and setup backend environment
+  hosts: all
+  tasks:
+    - name: Create release directory
+      command: mkdir -p /home/ubuntu/release
+
+    - name: Update apt cache
+      command: sudo apt update
+
+    - name: Remove existing NodeJS and npm
+      command: sudo apt-get remove -y nodejs npm
+      ignore_errors: yes
+
+    - name: Remove NodeJS related packages
+      command: sudo apt-get purge -y nodejs* npm
+      ignore_errors: yes
+
+    - name: Clean apt
+      command: sudo apt-get autoremove -y
+      ignore_errors: yes
+
+    - name: Setup NodeJS 18.x repository
+      shell: curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
+
+    - name: Install NodeJS
+      command: sudo apt-get install -y nodejs
+
+    - name: Install PM2 globally
+      command: sudo npm install -g pm2
+
+    - name: Clone AWS fullstack repository
+      command: git clone https://github.com/aws-stress-test/AWS_fullstack.git /home/ubuntu/AWS_fullstack
+      ignore_errors: yes
+
+    - name: Create backend .env file
+      shell: |
+        cat > /home/ubuntu/AWS_fullstack/backend/.env << 'EOL'
+        MONGO_URI=mongodb://10.0.2.153:27017/bootcampchat?replicaSet=rs0
+        JWT_SECRET=asl
+        REDIS_HOST=10.0.6.28
+        REDIS_PORT=6379
+        OPENAI_API_KEY=sk-pr
+        AWS_ACCESS_KEY_ID=AKI
+        AWS_SECRET_ACCESS_KEY=/om
+        AWS_REGION=ap-northeast-2
+        EOL
+
+    - name: Install backend dependencies
+      command: npm install
+      args:
+        chdir: /home/ubuntu/AWS_fullstack/backend
+
+    - name: Create frontend .env.local file
+      shell: |
+        cat > /home/ubuntu/AWS_fullstack/frontend/.env.local << 'EOL'
+        NEXT_PUBLIC_API_URL=https://api.goorm-ktb-018.goorm.team
+        NEXT_PUBLIC_PASSWORD_SALT=akhs
+        EOL
+
+    - name: Create frontend .npmrc file
+      shell: |
+        cat > /home/ubuntu/AWS_fullstack/frontend/.npmrc << 'EOL'
+        @goorm-dev:registry=https://npm.pkg.github.com/
+        //npm.pkg.github.com/:_authToken=ghp_F7FHp
+        EOL
+
+    - name: Install frontend dependencies
+      command: npm install
+      args:
+        chdir: /home/ubuntu/AWS_fullstack/frontend
